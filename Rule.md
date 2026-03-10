@@ -1,16 +1,22 @@
-# Project Rules
+# プロジェクトのルール
 
-## Development Environment
-- All python code **MUST** be run within the `.venv` virtual environment. Do not use the global python environment.
-- Python version is 3.14.
+## コミュニケーション・記録の言語
+- **AIとのやり取り、ドキュメントの記述、作業履歴の記録など、一切のテキストコミュニケーションはすべて日本語で行うこと。**
 
-## Pyxel Coding Standards
-- **Separation of Concerns:** 
-  - `update()`: Only handle game logic, state updates, and input here. Do not draw.
-  - `draw()`: Only handle rendering (e.g., `pyxel.cls()`, `pyxel.blt()`, `pyxel.text()`). Do not update game state here.
-- **Assets:**
-  - Load resources (like `.pyxres` files, images, sounds) from the `assets/` directory.
+## 開発環境
+- すべてのPythonコードは必ず `.venv` 仮想環境内で実行すること。グローバルのPython環境は使用しないこと。
+- Pythonのバージョンは 3.14 を使用する。
 
-## File Structure
-- Main entry point is `src/main.py`.
-- Keep the root directory clean; place source code in `src/` and resources in `assets/`.
+## Pyxel コーディング規約
+- **関心の分離 (Separation of Concerns):** 
+  - `update()`: ゲームロジック、状態の更新、入力の処理のみを行う。ここでは描画処理を行わない。
+  - `draw()`: 描画処理 (`pyxel.cls()`, `pyxel.blt()`, `pyxel.text()` など) のみを行う。ここではゲームの状態を更新しない。
+- **アセット (Assets):**
+  - リソース（`.pyxres` ファイル、画像、音声など）は `assets/` ディレクトリから読み込むこと。
+
+## ファイル構成
+- メインのエントリーポイントは `src/main.py` とする。
+- ルートディレクトリは綺麗に保つこと。ソースコードは `src/` へ、リソースは `assets/` へ配置する。
+
+## マップ（ステージ）設計のルール
+- `src/constants.py` などでマップの文字列表現を作成する際、**「箱（$）の数」と「ゴール（.）の数」は必ず同数にすること。**プレイヤーが混乱する原因となるため、ダミーのゴールやダミーの箱を配置してはならない。

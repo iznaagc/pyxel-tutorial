@@ -1,18 +1,25 @@
-# AI Agent Instructions
+# AI エージェントへの指示書
 
-When acting as an AI coding assistant in this repository, strictly abide by the following instructions:
+当リポジトリにてAIコーディングアシスタントとして動作する際は、以下の指示に厳密に従うこと。また、これらを遵守し、すべてのやり取りを日本語で行うこと。
 
-1. **Virtual Environment Enforcement:**
-   - ALWAYS activate the virtual environment before installing packages or executing Python scripts.
-   - Command to activate (PowerShell): `.\.venv\Scripts\Activate.ps1`
-   - Example when installing: `.\.venv\Scripts\Activate.ps1; pip install [package]`
-   - Example when running: `.\.venv\Scripts\python.exe src/main.py`
+1. **基本ルール（言語）:**
+   - ユーザーとの対話、ドキュメント作成、および作業の記録 (`HISTORY.md`) は**すべて日本語**で行うこと。
 
-2. **Project Context:**
-   - Before suggesting or making major architectural decisions, review `Rule.md` to ensure compliance with project rules.
+2. **仮想環境の強制:**
+   - パッケージのインストールやPythonスクリプトを実行する際は、**必ず**仮想環境を有効化すること。
+   - 有効化コマンド (PowerShell): `.\.venv\Scripts\Activate.ps1`
+   - インストール時の例: `.\.venv\Scripts\Activate.ps1; pip install [package]`
+   - 実行時の例: `.\.venv\Scripts\python.exe src/main.py`
+
+3. **プロジェクトのコンテキスト:**
+   - アーキテクチャに関する重要な決定や提案を行う前に、必ず `Rule.md` を確認し、プロジェクトのルールを遵守すること。
    
-3. **Pyxel Specifics & Visual Output (using Pyxel-MCP):**
-   - Use the `pyxel-mcp` tools (such as `run_and_capture`, `inspect_sprite`, `play_and_capture`, `inspect_screen`, etc.) to visually verify your code and troubleshoot layout/color issues.
-   - **Always verify visually.** Pyxel's coordinate system, color indices, and sprite layouts often produce unexpected results. Do not assume your layout code works until you inspect a screenshot or screen output.
-   - You can capture multiple frames or simulate input using `play_and_capture` or `capture_frames`. Always double check the Pyxel SKILL docs for syntax.
-   - When suggesting new graphics, provide the exact coordinates or parameters to use with Pyxel drawing functions, and iterate based on visual/audio feedback.
+4. **Pyxel 特有の仕様と視覚的出力 (Pyxel-MCP の活用):**
+   - 画面の確認やレイアウト・色彩のデバッグには、`pyxel-mcp` ツール (`run_and_capture`, `inspect_sprite`, `play_and_capture`, `inspect_screen` 等) を利用してコードを視覚的に検証すること。
+   - **必ず視覚的に検証すること。** Pyxelの座標系、カラーインデックス、スプライトの配置は予期せぬ結果を生むことが多いため、スクリーンショットや画面出力を確認するまで、レイアウトコードが機能すると断定しないこと。
+   - `play_and_capture` や `capture_frames` を使って、複数フレームのキャプチャや入力のシミュレーションが可能。適宜、Pyxel SKILL ドキュメントで構文を確認すること。
+   - 新しいグラフィックを提案する際は、Pyxelの描画関数で使用する正確な座標やパラメータを提示し、視覚・音声フィードバックに基づいてイテレーションを行うこと。
+
+5. **タスクの記録 (`HISTORY.md`):**
+   - あるステップや重要な作業が完了した後は、**必ず**ルートディレクトリにある `HISTORY.md` を更新すること。
+   - 実施した作業内容、追加または変更したファイル名、および変更の簡単な概要を**日本語で**記録すること。ユーザーが過去の変更履歴を正確かつ容易に追えるよう、このログを丁寧に保守すること。
