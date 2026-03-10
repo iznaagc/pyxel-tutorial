@@ -1,16 +1,17 @@
-# Scene identifiers
-SCENE_TITLE = 0
-SCENE_PLAY = 1
-SCENE_CLEAR = 2
+# シーン識別子（どの画面かを示す番号）
+SCENE_TITLE = 0  # タイトル画面
+SCENE_PLAY = 1   # プレイ画面
+SCENE_CLEAR = 2  # クリア画面
 
-# Game constants
-WINDOW_WIDTH = 160
-WINDOW_HEIGHT = 120
-TILE_SIZE = 8
+# ゲームの基本設定
+WINDOW_WIDTH = 160   # ウィンドウの横幅
+WINDOW_HEIGHT = 120  # ウィンドウの高さ
+TILE_SIZE = 8        # 1マスのサイズ（8x8ピクセル）
 
-# Level designs
+# ステージデザイン（レベルデータ）
+# #=壁, .=ゴール, @=プレイヤー, $=箱, (空白)=床
 LEVELS = [
-    # Level 1: Basic Intro
+    # レベル 1: 基本的な操作の練習
     [
         "######",
         "#    #",
@@ -19,7 +20,7 @@ LEVELS = [
         "#  @ #",
         "######"
     ],
-    # Level 2: A bit of thinking
+    # レベル 2: 少し考える必要がある配置
     [
         "########",
         "###   ##",
@@ -29,7 +30,7 @@ LEVELS = [
         "#      #",
         "########"
     ],
-    # Level 3: Dual Corridor
+    # レベル 3: 2つの通路があるステージ
     [
         "########",
         "##     #",
