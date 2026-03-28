@@ -18,7 +18,7 @@ class BaseWindow:
 
     def __init__(self, x, y, width, height,
                  bg_color=1, border_color=7, text_color=7,
-                 has_border=True, semi_transparent=False,
+                 has_border=True, has_bg=True, semi_transparent=False,
                  auto_resize=True):
         """
         Args:
@@ -30,6 +30,7 @@ class BaseWindow:
             border_color: 枠線の色（デフォルト: 7=白）
             text_color: テキストの色（デフォルト: 7=白）
             has_border: 枠線を描画するか（デフォルト: True）
+            has_bg: 背景を描画するか（デフォルト: True）
             semi_transparent: 背景を半透明にするか（デフォルト: False）
             auto_resize: テキスト内容に合わせてサイズを自動調整するか（デフォルト: True）
         """
@@ -41,6 +42,7 @@ class BaseWindow:
         self.border_color = border_color
         self.text_color = text_color
         self.has_border = has_border
+        self.has_bg = has_bg
         self.semi_transparent = semi_transparent
         self.auto_resize = auto_resize
 
@@ -84,13 +86,14 @@ class BaseWindow:
         if not self.is_open:
             return
 
-        if self.semi_transparent:
-            pyxel.dither(0.5)
+        if self.has_bg:
+            if self.semi_transparent:
+                pyxel.dither(0.5)
 
-        pyxel.rect(self.x, self.y, self.width, self.height, self.bg_color)
+            pyxel.rect(self.x, self.y, self.width, self.height, self.bg_color)
 
-        if self.semi_transparent:
-            pyxel.dither(1.0)
+            if self.semi_transparent:
+                pyxel.dither(1.0)
 
         if self.has_border:
             pyxel.rectb(self.x, self.y,

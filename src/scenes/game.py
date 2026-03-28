@@ -4,6 +4,7 @@ import config
 from scenes.base import Scene
 from ui.message_window import MessageWindow, TEXT_SPEED_FAST
 from ui.select_window import SelectWindow
+from ui.telop_window import TelopWindow
 
 
 # デモの進行状態
@@ -11,6 +12,7 @@ STATE_MENU = 0           # デモメニュー表示中
 STATE_MSG_DEMO = 1       # メッセージウィンドウデモ中
 STATE_SELECT_DEMO = 2    # 選択肢ウィンドウデモ中
 STATE_ACTIVE_DEMO = 3    # アクティブ/非アクティブデモ中
+STATE_TELOP_DEMO = 4     # テロップデモ中
 
 # デモメニューの選択肢
 DEMO_MENU_ITEMS = [
@@ -23,6 +25,8 @@ DEMO_MENU_ITEMS = [
     "選択肢：多数選択肢（長押しリピート）",
     "選択肢：半透明ウィンドウ",
     "ウィンドウ：アクティブ/非アクティブ",
+    "テロップ：ストーリー風",
+    "テロップ：スタッフロール風",
     "タイトルに戻る",
 ]
 
@@ -48,6 +52,7 @@ class GameScene(Scene):
         self._state = STATE_MENU
         self._select_window = None    # テスト用の選択肢ウィンドウ
         self._select_result_text = "" # 選択結果の表示テキスト
+        self._telop = None            # テロップウィンドウ
 
         # デモメニューを開いた状態で開始
         self._demo_menu.open()
@@ -58,6 +63,7 @@ class GameScene(Scene):
         self._state = STATE_MENU
         self._select_window = None
         self._select_result_text = ""
+        self._telop = None
         self._demo_menu.open(initial_cursor=self._demo_menu.cursor)
         self._demo_menu.activate()
 
@@ -80,6 +86,8 @@ class GameScene(Scene):
             self.msg_window.close()
             if self._select_window:
                 self._select_window.close()
+            if self._telop:
+                self._telop.skip()
             self._open_demo_menu()
             return
 
@@ -141,6 +149,21 @@ class GameScene(Scene):
                     self._open_demo_menu()
             return
 
+        # --- テロップデモ中 ---
+        if self._state == STATE_TELOP_DEMO:
+            if self._telop and self._telop.is_open:
+                # Enter/Spaceでスキップ
+                if pyxel.btnp(pyxel.KEY_RETURN) or pyxel.btnp(pyxel.KEY_SPACE):
+                    self._telop.skip()
+                    self._open_demo_menu()
+                    return
+                self._telop.update()
+                if self._telop.is_complete:
+                    self._open_demo_menu()
+            else:
+                self._open_demo_menu()
+            return
+
     def _on_menu_selected(self, index):
         """デモメニューの選択に応じてデモを開始する。"""
         # 最後の項目 = タイトルに戻る
@@ -184,6 +207,14 @@ class GameScene(Scene):
             self._start_active_demo()
             return
 
+        # テロップデモ (9-10)
+        if index == 9:
+            self._start_telop_story()
+            return
+        if index == 10:
+            self._start_telop_credits()
+            return
+
     def _start_active_demo(self):
         """アクティブ/非アクティブ切り替えデモを開始する。"""
         self._state = STATE_ACTIVE_DEMO
@@ -207,6 +238,70 @@ class GameScene(Scene):
         self.msg_window._display_complete = True
 
         self._activate_window(self._select_window)
+
+    def _start_telop_story(self):
+        """ストーリー風テロップデモを開始する。"""
+        self._state = STATE_TELOP_DEMO
+        self._telop = TelopWindow(scroll_speed=0.8, text_color=7)
+        self._telop.show([
+            "",
+            "遥かなる時の彼方──",
+            "",
+            "世界は光と闇の狭間で",
+            "均衡を保っていた。",
+            "",
+            "しかしある日、",
+            "封印されし古の魔王が",
+            "目覚めの時を迎える。",
+            "",
+            "大地は裂け、空は紅に染まり",
+            "人々は絶望の淵に立たされた。",
+            "",
+            "残された希望は、",
+            "伝説の勇者の末裔──",
+            "たった一人の少年だけだった。",
+            "",
+            "",
+            "第一章「旅立ちの朝」",
+            "",
+        ])
+
+    def _start_telop_credits(self):
+        """スタッフロール風テロップデモを開始する。"""
+        self._state = STATE_TELOP_DEMO
+        self._telop = TelopWindow(scroll_speed=1.0, text_color=7)
+        self._telop.show([
+            "",
+            "- STAFF -",
+            "",
+            "",
+            "Director",
+            "テスト太郎",
+            "",
+            "",
+            "Programming",
+            "テストプログラマーA",
+            "テストプログラマーB",
+            "",
+            "",
+            "Graphics",
+            "テストアーティストA",
+            "",
+            "",
+            "Music & Sound",
+            "テストコンポーザー",
+            "",
+            "",
+            "Special Thanks",
+            "Pyxel Engine",
+            "すべてのプレイヤー",
+            "",
+            "",
+            "",
+            "Thank you for playing!",
+            "",
+            "",
+        ])
 
     # =================================================================
     # メッセージテストパターン
@@ -367,6 +462,13 @@ class GameScene(Scene):
     def draw(self):
         pyxel.cls(0)
         font = config.FONT
+
+        # テロップデモ中は全画面テロップのみ描画
+        if self._state == STATE_TELOP_DEMO:
+            if self._telop:
+                self._telop.draw()
+            pyxel.text(120, 254, "Enter: スキップ  BS: メニューへ  Q: タイトルへ", 5, font)
+            return
 
         pyxel.text(180, 10, "DEMO SCENE", 7, font)
 

@@ -9,6 +9,7 @@ from PIL import Image
 import config
 from ui.message_window import MessageWindow
 from ui.select_window import SelectWindow
+from ui.telop_window import TelopWindow
 
 SCREENSHOT_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "screenshots"
@@ -56,6 +57,8 @@ class ScreenshotHarness:
             ("select_semi_transparent", self._draw_select_semi),
             ("active_select_with_inactive_msg", self._draw_active_select),
             ("active_msg_with_inactive_select", self._draw_active_msg),
+            ("telop_story", self._draw_telop_story),
+            ("telop_credits", self._draw_telop_credits),
         ]
 
     def _save_current(self, name):
@@ -129,6 +132,8 @@ class ScreenshotHarness:
             "選択肢：多数選択肢（長押しリピート）",
             "選択肢：半透明ウィンドウ",
             "ウィンドウ：アクティブ/非アクティブ",
+            "テロップ：ストーリー風",
+            "テロップ：スタッフロール風",
             "タイトルに戻る",
         ]
 
@@ -138,7 +143,7 @@ class ScreenshotHarness:
         sw = SelectWindow(
             x=16, y=36,
             items=self._demo_menu_items(),
-            cancel_index=9,
+            cancel_index=11,
             page_size=8,
         )
         sw.open()
@@ -152,7 +157,7 @@ class ScreenshotHarness:
         sw = SelectWindow(
             x=16, y=36,
             items=self._demo_menu_items(),
-            cancel_index=9,
+            cancel_index=11,
             page_size=8,
         )
         # カーソルを9番目（タイトルに戻る）にしてページ2を表示
@@ -310,6 +315,59 @@ class ScreenshotHarness:
         }])
         mw.activate()
         mw.draw()
+
+
+    # --- テロップ系 ---
+    def _draw_telop_story(self):
+        """ストーリー風テロップ（途中表示状態）。"""
+        pyxel.cls(0)
+        telop = TelopWindow(scroll_speed=1.0, text_color=7)
+        lines = [
+            "",
+            "遥かなる時の彼方──",
+            "",
+            "世界は光と闇の狭間で",
+            "均衡を保っていた。",
+            "",
+            "しかしある日、",
+            "封印されし古の魔王が",
+            "目覚めの時を迎える。",
+            "",
+            "大地は裂け、空は紅に染まり",
+            "人々は絶望の淵に立たされた。",
+        ]
+        telop.show(lines)
+        # テロップを途中位置にセット（画面中央あたりに表示）
+        telop._scroll_y = -(len(lines) * 24 // 2 - config.SCREEN_HEIGHT // 2)
+        telop.y = int(telop._scroll_y)
+        telop.draw()
+
+    def _draw_telop_credits(self):
+        """スタッフロール風テロップ（途中表示状態）。"""
+        pyxel.cls(0)
+        telop = TelopWindow(scroll_speed=1.0, text_color=7)
+        lines = [
+            "",
+            "- STAFF -",
+            "",
+            "",
+            "Director",
+            "テスト太郎",
+            "",
+            "",
+            "Programming",
+            "テストプログラマーA",
+            "テストプログラマーB",
+            "",
+            "",
+            "Graphics",
+            "テストアーティストA",
+        ]
+        telop.show(lines)
+        # テロップを途中位置にセット
+        telop._scroll_y = -(len(lines) * 24 // 2 - config.SCREEN_HEIGHT // 2)
+        telop.y = int(telop._scroll_y)
+        telop.draw()
 
 
 if __name__ == "__main__":
