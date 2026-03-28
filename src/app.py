@@ -1,5 +1,6 @@
 import pyxel
 
+import config
 from core.scene_manager import SceneManager
 from scenes.title import TitleScene
 from scenes.game import GameScene
@@ -10,12 +11,9 @@ class App:
     Pyxelの初期化・ゲームループの起動・シーン管理を統括する。
     """
 
-    # 画面サイズ（必要に応じて調整）
-    SCREEN_WIDTH = 256
-    SCREEN_HEIGHT = 256
-
     def __init__(self):
-        pyxel.init(self.SCREEN_WIDTH, self.SCREEN_HEIGHT, title="My Game")
+        pyxel.init(config.SCREEN_WIDTH, config.SCREEN_HEIGHT, title="My Game")
+        config.init_font()
 
         # シーンマネージャーの初期化
         self.scene_manager = SceneManager()

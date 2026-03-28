@@ -1,5 +1,8 @@
 import pyxel
 
+import config
+
+
 class Menu:
     """汎用メニューUI。カーソル選択に対応。"""
 
@@ -26,7 +29,8 @@ class Menu:
 
     def draw(self):
         """メニューを描画する。"""
+        font = config.FONT
         for i, item in enumerate(self.items):
             # カーソル位置に記号を表示
             prefix = "> " if i == self.cursor else "  "
-            pyxel.text(self.x, self.y + i * 10, prefix + item, 7)
+            pyxel.text(self.x, self.y + i * 24, prefix + item, 7, font)

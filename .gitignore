@@ -3,3 +3,10 @@
 __pycache__/
 *.pyc
 .pyxel/
+.claude/
+.mcp.json
+assets/fonts/
+*.ttf
+*.otf
+*.woff
+*.woff2
