@@ -43,6 +43,7 @@ class TitleScene(Scene):
             self.scene_manager.change_scene("game")
         elif selected == 1: # OPTION
             self.option_window.open(lines=["~ OPTION MENU ~", "", "No settings yet."])
+            self.option_window.activate()
         elif selected == 2: # QUIT
             pyxel.quit()
 

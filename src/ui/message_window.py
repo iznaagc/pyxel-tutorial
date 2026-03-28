@@ -59,9 +59,9 @@ class MessageWindow(BaseWindow):
             text_speed: テキスト表示速度（フレーム/文字、小さいほど速い）
         """
         super().__init__(x, y, width, height,
-                         bg_color, border_color,
-                         has_border, semi_transparent)
-        self.text_color = text_color
+                         bg_color, border_color, text_color,
+                         has_border, semi_transparent,
+                         auto_resize=False)
         self.confirm_key = confirm_key
         self.text_speed = text_speed
 
@@ -161,7 +161,7 @@ class MessageWindow(BaseWindow):
 
     def update(self):
         """メッセージウィンドウの入力・状態更新。"""
-        if not self.is_open or self._current_msg is None:
+        if not self.is_open or not self.is_active or self._current_msg is None:
             return
 
         if not self._display_complete:
@@ -220,7 +220,7 @@ class MessageWindow(BaseWindow):
         face_y = self.y + (self.height - h) // 2
 
         # 顔グラの背景枠
-        pyxel.rectb(face_x - 1, face_y - 1, w + 2, h + 2, self.border_color)
+        pyxel.rectb(face_x - 1, face_y - 1, w + 2, h + 2, self._current_border_color())
         pyxel.blt(face_x, face_y, img, u, v, w, h, colkey=0)
 
     def _draw_name_window(self):
@@ -248,7 +248,7 @@ class MessageWindow(BaseWindow):
 
         if self.has_border:
             pyxel.rectb(name_x, name_y, name_width, NAME_WINDOW_HEIGHT,
-                        self.border_color)
+                        self._current_border_color())
 
         # 名前テキスト
         text_x = name_x + NAME_WINDOW_PADDING

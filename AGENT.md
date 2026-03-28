@@ -17,3 +17,9 @@ When acting as an AI coding assistant in this repository, strictly abide by the 
    - **Always verify visually.** Pyxel's coordinate system, color indices, and sprite layouts often produce unexpected results. Do not assume your layout code works until you inspect a screenshot or screen output.
    - You can capture multiple frames or simulate input using `play_and_capture` or `capture_frames`. Always double check the Pyxel SKILL docs for syntax.
    - When suggesting new graphics, provide the exact coordinates or parameters to use with Pyxel drawing functions, and iterate based on visual/audio feedback.
+
+4. **スクリーンショットの保存（恒久ルール）:**
+   - 機能の追加や改修を行い、MCPを通して画面のチェックをする際には **都度スクリーンショットを `screenshots/` ディレクトリに保存する**。
+   - 一時ディレクトリ（/tmp等）には残さず、必ずプロジェクト内に保存する。
+   - ファイル名は内容がわかる英語の命名にする（例: `select_window_yes_no.png`, `msg_japanese_basic.png`）。
+   - これは一時的な確認ではなく、変更履歴としての記録を兼ねる恒久的な作業である。
