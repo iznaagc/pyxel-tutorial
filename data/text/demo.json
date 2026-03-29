@@ -1,9 +1,10 @@
 {
   "version": 1,
+  "file_id": "demo",
   "messages": {
     "msg_basic": [
       {
-        "text": "こんにちは！\nメッセージウィンドウの\nテストを始めます。",
+        "text": "こんにちは！エディタで編集してみたよ！\nメッセージウィンドウの\nテストを始めます。",
         "name": "アリス"
       },
       {
@@ -86,7 +87,10 @@
       "cancel_index": 11
     },
     "select_yesno": {
-      "items": ["はい", "いいえ"],
+      "items": [
+        "はい",
+        "いいえ"
+      ],
       "cancel_index": 1,
       "desc": {
         "text": "基本の「はい/いいえ」選択。\nESCキーで「いいえ」が\n選ばれます。",
@@ -94,7 +98,11 @@
       }
     },
     "select_3": {
-      "items": ["攻撃", "魔法", "逃げる"],
+      "items": [
+        "攻撃",
+        "魔法",
+        "逃げる"
+      ],
       "cancel_index": 2,
       "desc": {
         "text": "3つの選択肢。\nカーソル上下でループ確認。\nESCで「逃げる」。",
@@ -132,7 +140,11 @@
       }
     },
     "select_semi": {
-      "items": ["セーブする", "ロードする", "戻る"],
+      "items": [
+        "セーブする",
+        "ロードする",
+        "戻る"
+      ],
       "cancel_index": 2,
       "semi_transparent": true,
       "desc": {
@@ -141,7 +153,10 @@
       }
     },
     "select_active_demo": {
-      "items": ["はい", "いいえ"],
+      "items": [
+        "はい",
+        "いいえ"
+      ],
       "cancel_index": 1
     }
   },

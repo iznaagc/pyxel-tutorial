@@ -39,4 +39,4 @@ def init_text_manager():
     global TEXT_MANAGER
     from data.text_manager import TextManager
     TEXT_MANAGER = TextManager()
-    TEXT_MANAGER.load(os.path.join(COMPILED_DIR, "demo_text.bin"))
+    TEXT_MANAGER.load(os.path.join(COMPILED_DIR, "text_all.bin"))

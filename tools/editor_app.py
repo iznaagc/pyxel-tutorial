@@ -36,7 +36,7 @@ from editor_config import (
 
 # パス
 TEXT_DIR = os.path.join(_PROJECT_ROOT, "data", "text")
-JSON_PATH = os.path.join(TEXT_DIR, "demo_text.json")
+JSON_PATH = os.path.join(TEXT_DIR, "demo.json")
 COMPILER_PATH = os.path.join(_TOOLS_DIR, "compiler.py")
 
 # ステータスバー

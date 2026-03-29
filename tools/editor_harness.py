@@ -22,7 +22,7 @@ from editor_config import (
 )
 
 SCREENSHOT_DIR = os.path.join(_PROJECT_ROOT, "screenshots")
-JSON_PATH = os.path.join(_PROJECT_ROOT, "data", "text", "demo_text.json")
+JSON_PATH = os.path.join(_PROJECT_ROOT, "data", "text", "demo.json")
 
 PALETTE = [
     (0, 0, 0), (43, 51, 95), (126, 32, 114), (25, 149, 156),
