@@ -14,22 +14,6 @@ STATE_SELECT_DEMO = 2    # 選択肢ウィンドウデモ中
 STATE_ACTIVE_DEMO = 3    # アクティブ/非アクティブデモ中
 STATE_TELOP_DEMO = 4     # テロップデモ中
 
-# デモメニューの選択肢
-DEMO_MENU_ITEMS = [
-    "メッセージ：基本（日本語会話）",
-    "メッセージ：文字数テスト",
-    "メッセージ：日英混在/名前/自動送り",
-    "選択肢：はい/いいえ",
-    "選択肢：3択メニュー",
-    "選択肢：長いテキスト（自動リサイズ）",
-    "選択肢：多数選択肢（長押しリピート）",
-    "選択肢：半透明ウィンドウ",
-    "ウィンドウ：アクティブ/非アクティブ",
-    "テロップ：ストーリー風",
-    "テロップ：スタッフロール風",
-    "タイトルに戻る",
-]
-
 # メニューの表示上限
 DEMO_MENU_MAX_VISIBLE = 8
 
@@ -42,10 +26,12 @@ class GameScene(Scene):
         self.msg_window = MessageWindow()
 
         # デモメニュー（画面左側に配置、ESCで戻る）
+        menu = config.TEXT_MANAGER.get_selection("demo_menu")
+        self._demo_menu_items = menu["items"]
         self._demo_menu = SelectWindow(
             x=16, y=36,
-            items=DEMO_MENU_ITEMS,
-            cancel_index=len(DEMO_MENU_ITEMS) - 1,
+            items=self._demo_menu_items,
+            cancel_index=menu["cancel_index"],
             page_size=DEMO_MENU_MAX_VISIBLE,
         )
 
@@ -167,7 +153,7 @@ class GameScene(Scene):
     def _on_menu_selected(self, index):
         """デモメニューの選択に応じてデモを開始する。"""
         # 最後の項目 = タイトルに戻る
-        if index == len(DEMO_MENU_ITEMS) - 1:
+        if index == len(self._demo_menu_items) - 1:
             self.scene_manager.change_scene("title")
             return
 
@@ -175,11 +161,8 @@ class GameScene(Scene):
         if index <= 2:
             self._state = STATE_MSG_DEMO
             self.msg_window.set_text_speed(TEXT_SPEED_FAST)
-            messages = [
-                self._msg_basic,
-                self._msg_charcount,
-                self._msg_mixed,
-            ][index]()
+            msg_ids = ["msg_basic", "msg_charcount", "msg_mixed"]
+            messages = config.TEXT_MANAGER.get_messages(msg_ids[index])
             self.msg_window.show(messages)
             self._activate_window(self.msg_window)
             return
@@ -187,19 +170,22 @@ class GameScene(Scene):
         # 選択肢系デモ (3-7)
         if index <= 7:
             self._state = STATE_SELECT_DEMO
-            pattern = self._get_select_patterns()[index - 3]
+            sel_ids = ["select_yesno", "select_3", "select_long",
+                       "select_many", "select_semi"]
+            sel = config.TEXT_MANAGER.get_selection(sel_ids[index - 3])
+            layout = self._get_select_layouts()[index - 3]
             self._select_window = SelectWindow(
-                x=pattern["x"], y=pattern["y"],
-                items=pattern["items"],
-                cancel_index=pattern.get("cancel_index", -1),
-                semi_transparent=pattern.get("semi_transparent", False),
+                x=layout["x"], y=layout["y"],
+                items=sel["items"],
+                cancel_index=sel.get("cancel_index", -1),
+                semi_transparent=sel.get("semi_transparent", False),
             )
             self._select_window.open()
             self._activate_window(self._select_window)
             # 説明メッセージを同時表示（非アクティブで表示のみ）
-            if "desc" in pattern:
+            if "desc" in sel:
                 self.msg_window.set_text_speed(TEXT_SPEED_FAST)
-                self.msg_window.show([pattern["desc"]])
+                self.msg_window.show([sel["desc"]])
             return
 
         # アクティブ/非アクティブデモ (8)
@@ -209,10 +195,10 @@ class GameScene(Scene):
 
         # テロップデモ (9-10)
         if index == 9:
-            self._start_telop_story()
+            self._start_telop("telop_story")
             return
         if index == 10:
-            self._start_telop_credits()
+            self._start_telop("telop_credits")
             return
 
     def _start_active_demo(self):
@@ -220,10 +206,11 @@ class GameScene(Scene):
         self._state = STATE_ACTIVE_DEMO
 
         # 選択肢ウィンドウ（初期アクティブ）
+        sel = config.TEXT_MANAGER.get_selection("select_active_demo")
         self._select_window = SelectWindow(
             x=200, y=60,
-            items=["はい", "いいえ"],
-            cancel_index=1,
+            items=sel["items"],
+            cancel_index=sel["cancel_index"],
         )
         self._select_window.open()
 
@@ -239,220 +226,28 @@ class GameScene(Scene):
 
         self._activate_window(self._select_window)
 
-    def _start_telop_story(self):
-        """ストーリー風テロップデモを開始する。"""
+    def _start_telop(self, telop_id):
+        """テロップデモを開始する。"""
         self._state = STATE_TELOP_DEMO
-        self._telop = TelopWindow(scroll_speed=0.8, text_color=7)
-        self._telop.show([
-            "",
-            "遥かなる時の彼方──",
-            "",
-            "世界は光と闇の狭間で",
-            "均衡を保っていた。",
-            "",
-            "しかしある日、",
-            "封印されし古の魔王が",
-            "目覚めの時を迎える。",
-            "",
-            "大地は裂け、空は紅に染まり",
-            "人々は絶望の淵に立たされた。",
-            "",
-            "残された希望は、",
-            "伝説の勇者の末裔──",
-            "たった一人の少年だけだった。",
-            "",
-            "",
-            "第一章「旅立ちの朝」",
-            "",
-        ])
-
-    def _start_telop_credits(self):
-        """スタッフロール風テロップデモを開始する。"""
-        self._state = STATE_TELOP_DEMO
-        self._telop = TelopWindow(scroll_speed=1.0, text_color=7)
-        self._telop.show([
-            "",
-            "- STAFF -",
-            "",
-            "",
-            "Director",
-            "テスト太郎",
-            "",
-            "",
-            "Programming",
-            "テストプログラマーA",
-            "テストプログラマーB",
-            "",
-            "",
-            "Graphics",
-            "テストアーティストA",
-            "",
-            "",
-            "Music & Sound",
-            "テストコンポーザー",
-            "",
-            "",
-            "Special Thanks",
-            "Pyxel Engine",
-            "すべてのプレイヤー",
-            "",
-            "",
-            "",
-            "Thank you for playing!",
-            "",
-            "",
-        ])
+        telop = config.TEXT_MANAGER.get_telop(telop_id)
+        self._telop = TelopWindow(
+            scroll_speed=telop.get("scroll_speed", 1.0),
+            text_color=7,
+        )
+        self._telop.show(telop["lines"])
 
     # =================================================================
-    # メッセージテストパターン
+    # 選択肢レイアウト（座標はコード側に残す）
     # =================================================================
 
-    def _msg_basic(self):
-        """基本: 日本語会話テスト。"""
+    def _get_select_layouts(self):
+        """選択肢ウィンドウの座標レイアウトを返す。"""
         return [
-            {
-                "text": "こんにちは！\nメッセージウィンドウの\nテストを始めます。",
-                "name": "アリス",
-            },
-            {
-                "text": "日本語のテキストが\n正しく表示されるか\n確認しましょう。",
-                "name": "ボブ",
-            },
-            {
-                "text": "1行だけのメッセージ。",
-                "name": "テスト",
-            },
-            "名前ウィンドウなしの\n日本語メッセージです。",
-            {
-                "text": "長い名前が正しく\n表示されるかテスト。",
-                "name": "名前が長いキャラクター",
-            },
-        ]
-
-    def _msg_charcount(self):
-        """文字数テスト: はみ出し確認。"""
-        return [
-            {
-                "text": "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふ\n↑全角28文字ぴったり",
-                "name": "全角28文字",
-            },
-            {
-                "text": "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへ\n↑全角29文字（はみ出す？）",
-                "name": "全角29文字",
-            },
-            {
-                "text": "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほ\n↑全角30文字",
-                "name": "全角30文字",
-            },
-            {
-                "text": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuv\n↑半角56文字ぴったり",
-                "name": "半角56文字",
-            },
-            {
-                "text": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz\n↑半角60文字（はみ出す？）",
-                "name": "半角60文字",
-            },
-            {
-                "text": "１行目：全角で長めのテキストを書く\n２行目：このぐらいの文章量が\n３行目：実際のゲームで使われる",
-                "name": "3行びっしり",
-            },
-        ]
-
-    def _msg_mixed(self):
-        """日英混在・名前・自動送りテスト。"""
-        return [
-            {
-                "text": "HPが100回復した！\nLv.5にアップ！ATK+3\nスキル「炎の剣」を習得！",
-                "name": "システム",
-            },
-            {
-                "text": "This is English text.\nWith Japanese: 混在テスト\nHP: 999 / MP: 50",
-                "name": "Mixed",
-            },
-            {
-                "text": "このメッセージは\n自動で送られます。",
-                "name": "自動送り",
-                "auto": True,
-            },
-            {
-                "text": "自動送り2つ目。\n連続で自動送りが\n動作するか確認。",
-                "auto": True,
-            },
-            "テスト完了！",
-        ]
-
-    # =================================================================
-    # 選択肢テストパターン
-    # =================================================================
-
-    def _get_select_patterns(self):
-        """選択肢ウィンドウのテストパターンを返す。"""
-        return [
-            # 0: はい/いいえ
-            {
-                "x": 200, "y": 60,
-                "items": ["はい", "いいえ"],
-                "cancel_index": 1,
-                "desc": {
-                    "text": "基本の「はい/いいえ」選択。\nESCキーで「いいえ」が\n選ばれます。",
-                    "name": "はい/いいえ",
-                },
-            },
-            # 1: 3択メニュー
-            {
-                "x": 180, "y": 50,
-                "items": ["攻撃", "魔法", "逃げる"],
-                "cancel_index": 2,
-                "desc": {
-                    "text": "3つの選択肢。\nカーソル上下でループ確認。\nESCで「逃げる」。",
-                    "name": "3択メニュー",
-                },
-            },
-            # 2: 長いテキスト
-            {
-                "x": 80, "y": 50,
-                "items": [
-                    "ポーションを使う",
-                    "エリクサーを使う",
-                    "ハイポーションを使う",
-                    "やめる",
-                ],
-                "cancel_index": 3,
-                "desc": {
-                    "text": "長い日本語テキスト。\n自動リサイズで幅が\n合っているか確認。",
-                    "name": "自動リサイズ",
-                },
-            },
-            # 3: 多数の選択肢
-            {
-                "x": 160, "y": 20,
-                "items": [
-                    "アイテム1",
-                    "アイテム2",
-                    "アイテム3",
-                    "アイテム4",
-                    "アイテム5",
-                    "アイテム6",
-                    "アイテム7",
-                    "キャンセル",
-                ],
-                "cancel_index": 7,
-                "desc": {
-                    "text": "8個の選択肢。\n長押しでカーソルが\n加速するか確認。",
-                    "name": "長押しリピート",
-                },
-            },
-            # 4: 半透明
-            {
-                "x": 160, "y": 60,
-                "items": ["セーブする", "ロードする", "戻る"],
-                "cancel_index": 2,
-                "semi_transparent": True,
-                "desc": {
-                    "text": "半透明ウィンドウの\n選択肢表示テスト。",
-                    "name": "半透明",
-                },
-            },
+            {"x": 200, "y": 60},   # select_yesno
+            {"x": 180, "y": 50},   # select_3
+            {"x": 80,  "y": 50},   # select_long
+            {"x": 160, "y": 20},   # select_many
+            {"x": 160, "y": 60},   # select_semi
         ]
 
     # =================================================================
