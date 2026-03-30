@@ -423,13 +423,65 @@ class EditCommand(QUndoCommand):
             self._file_data[self._filepath][self._category][self._entry_id] = source
 
 
+class RenameCommand(QUndoCommand):
+    """IDリネームのUndoコマンド。"""
+
+    def __init__(self, file_data, filepath, category, old_id, new_id,
+                 description="Rename"):
+        super().__init__(description)
+        self._file_data = file_data
+        self._filepath = filepath
+        self._category = category
+        self._old_id = old_id
+        self._new_id = new_id
+
+    def redo(self):
+        self._rename(self._old_id, self._new_id)
+
+    def undo(self):
+        self._rename(self._new_id, self._old_id)
+
+    def _rename(self, from_id, to_id):
+        """辞書のキーをリネームする（順序を維持）。"""
+        cat_dict = self._file_data[self._filepath][self._category]
+        new_dict = {}
+        for key, value in cat_dict.items():
+            if key == from_id:
+                new_dict[to_id] = value
+            else:
+                new_dict[key] = value
+        cat_dict.clear()
+        cat_dict.update(new_dict)
+
+
 class FileTreePanel(QTreeWidget):
     """ファイル→カテゴリ→ID の3階層ツリー。"""
+
+    rename_requested = Signal(QTreeWidgetItem)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setHeaderLabel("Text Files")
         self.setIndentation(16)
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_context_menu)
+
+    def _show_context_menu(self, pos):
+        """右クリックコンテキストメニューを表示する。"""
+        item = self.itemAt(pos)
+        if not item:
+            return
+        info = item.data(0, Qt.UserRole)
+        if not info or info["type"] != "entry":
+            return
+
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu()
+        rename_action = menu.addAction("Rename ID...")
+        action = menu.exec(self.viewport().mapToGlobal(pos))
+        if action == rename_action:
+            self.rename_requested.emit(item)
+        menu.deleteLater()
 
     def load_files(self, file_data_map):
         """{ filepath: data } からツリーを構築する。"""
@@ -824,6 +876,7 @@ class EditorWindow(QMainWindow):
         # 左: ファイルツリー
         self._tree = FileTreePanel()
         self._tree.currentItemChanged.connect(self._on_tree_selected)
+        self._tree.rename_requested.connect(self._on_rename_requested)
         self._tree.setMinimumWidth(180)
         splitter.addWidget(self._tree)
 
@@ -915,6 +968,11 @@ class EditorWindow(QMainWindow):
         add_id_action = QAction("Add ID...", self)
         add_id_action.triggered.connect(self._add_id)
         edit_menu.addAction(add_id_action)
+
+        rename_id_action = QAction("Rename ID... (F2)", self)
+        rename_id_action.setShortcut(QKeySequence("F2"))
+        rename_id_action.triggered.connect(self._rename_id)
+        edit_menu.addAction(rename_id_action)
 
         del_id_action = QAction("Delete ID", self)
         del_id_action.setShortcut(QKeySequence("Delete"))
@@ -1050,8 +1108,19 @@ class EditorWindow(QMainWindow):
         if filepath not in self._file_data:
             return
         data = self._file_data[filepath]
+
+        # リネーム Undo/Redo でIDが変わった場合: ツリー再構築してリセット
         if entry_id not in data.get(cat, {}):
+            self._tree.load_files(self._file_data)
+            self._current_entry = None
+            self._snapshot = None
+            self._stack.setCurrentWidget(self._empty_page)
+            self._id_label.setText("Select an item from the tree")
+            self._preview.clear_preview()
+            self._dirty = True
+            self._update_title()
             return
+
         entry_data = data[cat][entry_id]
         self._snapshot = copy.deepcopy(entry_data)
 
@@ -1187,6 +1256,78 @@ class EditorWindow(QMainWindow):
         self._tree.load_files(self._file_data)
         self._stack.setCurrentWidget(self._empty_page)
         self._statusbar.showMessage(f"Deleted: {cat}.{entry_id}", 3000)
+
+    # --- リネーム機能 ---
+
+    def _on_rename_requested(self, item):
+        """右クリックメニューからのリネーム要求。"""
+        info = item.data(0, Qt.UserRole)
+        if not info or info["type"] != "entry":
+            return
+        self._tree.setCurrentItem(item)
+        self._rename_id()
+
+    def _rename_id(self):
+        """選択中のIDをリネームする。"""
+        if not self._current_entry:
+            self._statusbar.showMessage("Select an entry to rename", 3000)
+            return
+        filepath, cat, old_id = self._current_entry
+
+        new_id, ok = QInputDialog.getText(
+            self, "Rename ID", f"New name for '{old_id}':", text=old_id)
+        if not ok or not new_id.strip():
+            return
+        new_id = new_id.strip()
+
+        if new_id == old_id:
+            return
+
+        data = self._file_data[filepath]
+        if new_id in data[cat]:
+            QMessageBox.warning(self, "Error", f"ID '{new_id}' already exists")
+            return
+
+        # 未確定の編集変更を flush
+        self._flush_undo()
+
+        # Undo 対応のリネームコマンドを push
+        cmd = RenameCommand(
+            self._file_data, filepath, cat, old_id, new_id,
+            f"Rename {cat}.{old_id} -> {new_id}",
+        )
+        self._pushing_undo = True
+        self._undo_stack.push(cmd)
+        self._pushing_undo = False
+
+        # 現在のエントリ参照を更新
+        self._current_entry = (filepath, cat, new_id)
+        self._snapshot = copy.deepcopy(data[cat][new_id])
+
+        self._dirty = True
+        self._update_title()
+        self._tree.load_files(self._file_data)
+
+        # リネーム後のアイテムを再選択
+        self._select_tree_entry(filepath, cat, new_id)
+        self._statusbar.showMessage(f"Renamed: {old_id} -> {new_id}", 3000)
+
+    def _select_tree_entry(self, filepath, cat, entry_id):
+        """ツリー上の指定エントリを選択する。"""
+        for fi in range(self._tree.topLevelItemCount()):
+            file_item = self._tree.topLevelItem(fi)
+            file_info = file_item.data(0, Qt.UserRole)
+            if file_info and file_info.get("path") == filepath:
+                for ci in range(file_item.childCount()):
+                    cat_item = file_item.child(ci)
+                    cat_info = cat_item.data(0, Qt.UserRole)
+                    if cat_info and cat_info.get("category") == cat:
+                        for ei in range(cat_item.childCount()):
+                            entry_item = cat_item.child(ei)
+                            entry_info = entry_item.data(0, Qt.UserRole)
+                            if entry_info and entry_info.get("entry_id") == entry_id:
+                                self._tree.setCurrentItem(entry_item)
+                                return
 
     # --- 検索機能 ---
 
