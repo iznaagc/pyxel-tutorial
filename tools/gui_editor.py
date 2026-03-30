@@ -66,6 +66,9 @@ GAME_HEIGHT = 270
 # フォントパス
 FONT_PATH = os.path.join(_PROJECT_ROOT, "assets", "fonts", "madoufmg.ttf")
 
+# 文字数上限
+MSG_CHAR_LIMIT = 28
+
 # メッセージウィンドウの定数 (src/ui/message_window.py と同じ)
 MSG_X = 8
 MSG_Y = 182
@@ -97,6 +100,7 @@ class PreviewPanel(QWidget):
         self._category = None   # "messages" | "selections" | "telops"
         self._data = None       # 現在のエントリデータ
         self._page = 0          # messages のページ番号
+        self._warnings = []     # バリデーション警告リスト
 
         # ゲーム用フォント読み込み
         self._font_id = -1
@@ -116,7 +120,26 @@ class PreviewPanel(QWidget):
         self._category = category
         self._data = data
         self._page = page
+        self._warnings = self._validate(category, data)
         self.update()
+
+    def get_warnings(self):
+        """現在のバリデーション警告を返す。"""
+        return self._warnings
+
+    def _validate(self, category, data):
+        """データのバリデーションを行い、警告リストを返す。"""
+        warnings = []
+        if category != "messages" or not isinstance(data, list):
+            return warnings
+        for i, msg in enumerate(data):
+            text = msg if isinstance(msg, str) else msg.get("text", "")
+            for li, line in enumerate(text.split("\n")):
+                if len(line) > MSG_CHAR_LIMIT:
+                    warnings.append(
+                        f"Page {i+1}, Line {li+1}: {len(line)}文字 "
+                        f"(上限{MSG_CHAR_LIMIT})")
+        return warnings
 
     def clear_preview(self):
         """プレビューをクリアする。"""
@@ -235,6 +258,15 @@ class PreviewPanel(QWidget):
             lx = MSG_X + MSG_TEXT_PADDING
             ly = MSG_Y + MSG_TEXT_PADDING + i * MSG_LINE_HEIGHT + fm.ascent()
             p.drawText(lx, ly, line)
+
+            # 文字数超過行に赤枠表示
+            if len(line) > MSG_CHAR_LIMIT:
+                p.setPen(QPen(PYXEL_PALETTE[8], 2))  # Pink/Red
+                rect_y = MSG_Y + MSG_TEXT_PADDING + i * MSG_LINE_HEIGHT - 2
+                p.drawRect(lx - 2, rect_y,
+                           MSG_W - MSG_TEXT_PADDING * 2 + 2,
+                           MSG_LINE_HEIGHT - 1)
+                p.setPen(PYXEL_PALETTE[7])  # 白に戻す
 
         # 送りアイコン
         icon_x = MSG_X + MSG_W - 18
@@ -899,6 +931,12 @@ class EditorWindow(QMainWindow):
         reload_action.triggered.connect(self._reload_files)
         tools_menu.addAction(reload_action)
 
+        tools_menu.addSeparator()
+
+        unused_action = QAction("Find Unused IDs...", self)
+        unused_action.triggered.connect(self._find_unused_ids)
+        tools_menu.addAction(unused_action)
+
         # Edit メニュー
         edit_menu = menubar.addMenu("Edit")
 
@@ -1083,6 +1121,17 @@ class EditorWindow(QMainWindow):
 
         self._preview.set_preview(cat, entry_data, page)
 
+        # バリデーション警告をステータスバーに表示
+        warnings = self._preview.get_warnings()
+        if warnings:
+            self._statusbar.showMessage(
+                f"Warning: {warnings[0]}" +
+                (f" (+{len(warnings)-1} more)" if len(warnings) > 1 else ""))
+        else:
+            # 警告がなく、他のメッセージもなければクリア
+            if "Warning:" in (self._statusbar.currentMessage() or ""):
+                self._statusbar.clearMessage()
+
     def _save_all(self):
         """変更を全ファイルに保存する。"""
         # 未確定の変更を flush
@@ -1123,6 +1172,51 @@ class EditorWindow(QMainWindow):
                 self._statusbar.showMessage(f"Compile error: {err}", 5000)
         except Exception as e:
             self._statusbar.showMessage(f"Compile error: {e}", 5000)
+
+    def _find_unused_ids(self):
+        """src/ ディレクトリ内で参照されていないIDを検出する。"""
+        src_dir = os.path.join(_PROJECT_ROOT, "src")
+        if not os.path.isdir(src_dir):
+            QMessageBox.information(self, "Unused IDs",
+                                    f"Source directory not found: {src_dir}")
+            return
+
+        # src/ 内の全Pythonファイルの内容を読み込む
+        src_contents = []
+        for root, dirs, files in os.walk(src_dir):
+            for fname in files:
+                if fname.endswith(".py"):
+                    fpath = os.path.join(root, fname)
+                    try:
+                        with open(fpath, "r", encoding="utf-8") as f:
+                            src_contents.append(f.read())
+                    except Exception:
+                        pass
+        all_source = "\n".join(src_contents)
+
+        # 全IDを収集し、ソースコード内に出現するか検査
+        unused = []
+        for filepath, data in self._file_data.items():
+            filename = os.path.basename(filepath)
+            for cat in CATEGORIES:
+                if cat not in data:
+                    continue
+                for entry_id in data[cat]:
+                    if entry_id not in all_source:
+                        unused.append(f"{filename} > {CATEGORY_LABELS[cat]} > {entry_id}")
+
+        if not unused:
+            QMessageBox.information(self, "Unused IDs",
+                                    "All IDs are referenced in src/.")
+        else:
+            msg = f"{len(unused)} unused ID(s) found:\n\n"
+            msg += "\n".join(unused[:50])
+            if len(unused) > 50:
+                msg += f"\n... and {len(unused) - 50} more"
+            QMessageBox.warning(self, "Unused IDs", msg)
+
+        self._statusbar.showMessage(
+            f"Unused ID check: {len(unused)} unused", 5000)
 
     def _add_id(self):
         """選択中のカテゴリに新しいIDを追加する。"""
