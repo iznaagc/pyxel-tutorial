@@ -23,3 +23,22 @@ When acting as an AI coding assistant in this repository, strictly abide by the 
    - 一時ディレクトリ（/tmp等）には残さず、必ずプロジェクト内に保存する。
    - ファイル名は内容がわかる英語の命名にする（例: `select_window_yes_no.png`, `msg_japanese_basic.png`）。
    - これは一時的な確認ではなく、変更履歴としての記録を兼ねる恒久的な作業である。
+
+5. **タスク管理ルール（GitHub Issues ベース）:**
+   - 詳細は `documents/plan/000_works_task_management.md` を参照すること
+   - Codex / Claude Code など `.mcp.json` を読むAIでは、**MCP設定変更や `GITHUB_PAT` 変更後にAIセッション再起動が必要** な場合がある
+   - GitHub MCP が使えない場合は、まず `tools/check_github_task_env.ps1` で診断し、その結果に従って認証を復旧する
+   - **作業開始前に必ず確認**:
+     - `gh issue list --state open` で未クローズのIssue一覧を確認する
+     - `gh pr list --state open` で作業中のPR一覧を確認する
+     - 他のAIが着手宣言済みのIssueには手を出さない
+   - **着手時**:
+     - Issueにコメントで着手宣言する（例: `🤖 **Claude Code** が着手します（ブランチ: task/15-xxx）`）
+     - ブランチを `task/<Issue番号>-簡潔な説明` の形式で作成する
+     - 他の作業中タスクと変更対象ファイルが重なる場合は人間に相談する
+   - **完了時**:
+     - PRを作成し、本文に `Closes #Issue番号` を含める
+     - 実装内容の解説とスクリーンショット（該当する場合）をPRに記載する
+   - **コンテキスト制限時**:
+     - 進捗をコミット＆プッシュし、Issueにハンドオフコメントを残す
+   - **mainブランチへの直接コミットは禁止**

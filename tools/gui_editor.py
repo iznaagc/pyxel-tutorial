@@ -6,6 +6,7 @@
     .venv/Scripts/python tools/gui_editor.py
 """
 
+import copy
 import json
 import os
 import subprocess
@@ -24,8 +25,11 @@ from PySide6.QtWidgets import (
     QStatusBar, QMenuBar, QListWidget, QMessageBox, QInputDialog,
     QAbstractItemView,
 )
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction, QKeySequence, QFont
+from PySide6.QtCore import Qt, QTimer, QRectF, Signal
+from PySide6.QtGui import (
+    QAction, QKeySequence, QFont, QFontDatabase, QPainter, QColor, QPen,
+    QBrush, QPixmap, QUndoStack, QUndoCommand,
+)
 
 # カテゴリ表示名
 CATEGORY_LABELS = {
@@ -34,6 +38,389 @@ CATEGORY_LABELS = {
     "telops": "Telops",
 }
 CATEGORIES = ["messages", "selections", "telops"]
+
+# Pyxel パレット (16色)
+PYXEL_PALETTE = [
+    QColor(0, 0, 0),         # 0: Black
+    QColor(43, 51, 95),       # 1: Dark Blue (bg)
+    QColor(126, 32, 114),     # 2: Purple
+    QColor(25, 149, 156),     # 3: Cyan
+    QColor(139, 72, 82),      # 4: Red
+    QColor(57, 92, 152),      # 5: Blue
+    QColor(169, 193, 255),    # 6: Light Blue
+    QColor(238, 238, 238),    # 7: White
+    QColor(212, 24, 108),     # 8: Pink
+    QColor(211, 132, 65),     # 9: Orange
+    QColor(233, 195, 91),     # 10: Yellow
+    QColor(112, 198, 169),    # 11: Light Green
+    QColor(118, 150, 222),    # 12: Light Purple
+    QColor(163, 163, 163),    # 13: Gray
+    QColor(255, 151, 152),    # 14: Light Red
+    QColor(237, 199, 176),    # 15: Tan
+]
+
+# ゲーム画面サイズ
+GAME_WIDTH = 480
+GAME_HEIGHT = 270
+
+# フォントパス
+FONT_PATH = os.path.join(_PROJECT_ROOT, "assets", "fonts", "madoufmg.ttf")
+
+# メッセージウィンドウの定数 (src/ui/message_window.py と同じ)
+MSG_X = 8
+MSG_Y = 182
+MSG_W = 464
+MSG_H = 80
+MSG_TEXT_PADDING = 8
+MSG_LINE_HEIGHT = 20
+MSG_MAX_LINES = 3
+NAME_WINDOW_HEIGHT = 24
+NAME_WINDOW_PADDING = 6
+
+# 選択肢ウィンドウの定数 (src/ui/select_window.py と同じ)
+SEL_TEXT_PADDING = 8
+SEL_LINE_HEIGHT = 20
+SEL_CURSOR_CHAR = ">"
+SEL_CURSOR_MARGIN = 4
+
+# テロップの定数 (src/ui/telop_window.py と同じ)
+TELOP_LINE_HEIGHT = 24
+TELOP_TEXT_PADDING = 8
+
+
+class PreviewPanel(QWidget):
+    """QPainter でゲームUIを再現描画するプレビューパネル。"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumWidth(200)
+        self._category = None   # "messages" | "selections" | "telops"
+        self._data = None       # 現在のエントリデータ
+        self._page = 0          # messages のページ番号
+
+        # ゲーム用フォント読み込み
+        self._font_id = -1
+        self._game_font = None
+        if os.path.isfile(FONT_PATH):
+            self._font_id = QFontDatabase.addApplicationFont(FONT_PATH)
+            if self._font_id >= 0:
+                families = QFontDatabase.applicationFontFamilies(self._font_id)
+                if families:
+                    self._game_font = QFont(families[0], 12)
+        # フォールバック
+        if self._game_font is None:
+            self._game_font = QFont("Yu Gothic UI", 10)
+
+    def set_preview(self, category, data, page=0):
+        """プレビュー対象を設定する。"""
+        self._category = category
+        self._data = data
+        self._page = page
+        self.update()
+
+    def clear_preview(self):
+        """プレビューをクリアする。"""
+        self._category = None
+        self._data = None
+        self.update()
+
+    def set_page(self, page):
+        """メッセージのページを切り替える。"""
+        self._page = page
+        self.update()
+
+    def paintEvent(self, event):
+        """ゲーム画面をスケーリングして描画する。"""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, False)
+
+        # ゲーム画面のオフスクリーンバッファ
+        pixmap = QPixmap(GAME_WIDTH, GAME_HEIGHT)
+        pixmap.fill(PYXEL_PALETTE[0])
+
+        buf = QPainter(pixmap)
+        buf.setRenderHint(QPainter.Antialiasing, False)
+
+        if self._category and self._data:
+            if self._category == "messages":
+                self._draw_message(buf)
+            elif self._category == "selections":
+                self._draw_selection(buf)
+            elif self._category == "telops":
+                self._draw_telop(buf)
+        else:
+            # 何も選択されていない場合
+            buf.setFont(self._game_font)
+            buf.setPen(PYXEL_PALETTE[13])
+            buf.drawText(GAME_WIDTH // 2 - 60, GAME_HEIGHT // 2,
+                         "No Preview")
+
+        buf.end()
+
+        # ウィジェットサイズに合わせてスケーリング描画
+        w = self.width()
+        h = self.height()
+        scale = min(w / GAME_WIDTH, h / GAME_HEIGHT)
+        scaled_w = int(GAME_WIDTH * scale)
+        scaled_h = int(GAME_HEIGHT * scale)
+        offset_x = (w - scaled_w) // 2
+        offset_y = (h - scaled_h) // 2
+
+        # 黒で塗りつぶし
+        painter.fillRect(0, 0, w, h, QColor(30, 30, 30))
+        painter.drawPixmap(offset_x, offset_y, scaled_w, scaled_h, pixmap)
+
+        # 枠線
+        painter.setPen(QPen(PYXEL_PALETTE[13], 1))
+        painter.drawRect(offset_x, offset_y, scaled_w - 1, scaled_h - 1)
+
+        painter.end()
+
+    # --- メッセージウィンドウ描画 ---
+
+    def _draw_message(self, p):
+        """メッセージウィンドウをゲーム風に描画する。"""
+        if not self._data:
+            return
+
+        messages = self._data
+        if not isinstance(messages, list) or not messages:
+            return
+
+        page = min(self._page, len(messages) - 1)
+        msg = messages[page]
+
+        if isinstance(msg, str):
+            text = msg
+            name = ""
+            auto = False
+        else:
+            text = msg.get("text", "")
+            name = msg.get("name", "")
+            auto = msg.get("auto", False)
+
+        # 半透明背景（ディザの代わりに半透明で表現）
+        bg_color = QColor(PYXEL_PALETTE[1])
+        bg_color.setAlpha(160)
+        border_color = PYXEL_PALETTE[7]
+
+        # 名前ウィンドウ
+        if name:
+            p.setFont(self._game_font)
+            fm = p.fontMetrics()
+            name_text_w = fm.horizontalAdvance(name)
+            name_w = name_text_w + NAME_WINDOW_PADDING * 2
+            name_x = MSG_X + 4
+            name_y = MSG_Y - NAME_WINDOW_HEIGHT
+
+            p.fillRect(name_x, name_y, name_w, NAME_WINDOW_HEIGHT, bg_color)
+            p.setPen(QPen(border_color, 1))
+            p.drawRect(name_x, name_y, name_w - 1, NAME_WINDOW_HEIGHT - 1)
+
+            p.setPen(PYXEL_PALETTE[7])
+            text_y = name_y + (NAME_WINDOW_HEIGHT - fm.height()) // 2 + fm.ascent()
+            p.drawText(name_x + NAME_WINDOW_PADDING, text_y, name)
+
+        # メッセージウィンドウ本体
+        p.fillRect(MSG_X, MSG_Y, MSG_W, MSG_H, bg_color)
+        p.setPen(QPen(border_color, 1))
+        p.drawRect(MSG_X, MSG_Y, MSG_W - 1, MSG_H - 1)
+
+        # テキスト描画
+        p.setFont(self._game_font)
+        p.setPen(PYXEL_PALETTE[7])
+        lines = text.split("\n")[:MSG_MAX_LINES]
+        fm = p.fontMetrics()
+        for i, line in enumerate(lines):
+            lx = MSG_X + MSG_TEXT_PADDING
+            ly = MSG_Y + MSG_TEXT_PADDING + i * MSG_LINE_HEIGHT + fm.ascent()
+            p.drawText(lx, ly, line)
+
+        # 送りアイコン
+        icon_x = MSG_X + MSG_W - 18
+        icon_y = MSG_Y + MSG_H - 20 + fm.ascent()
+        p.setPen(PYXEL_PALETTE[7])
+        p.drawText(icon_x, icon_y, "v")
+
+        # auto 表示
+        if auto:
+            p.setPen(PYXEL_PALETTE[10])
+            p.drawText(MSG_X + MSG_TEXT_PADDING, MSG_Y + MSG_H + fm.ascent() + 2,
+                       "[AUTO]")
+
+        # ページ表示
+        p.setPen(PYXEL_PALETTE[13])
+        page_text = f"Page {page + 1}/{len(messages)}"
+        page_w = fm.horizontalAdvance(page_text)
+        p.drawText(MSG_X + MSG_W - page_w - 4,
+                   MSG_Y + MSG_H + fm.ascent() + 2, page_text)
+
+    # --- 選択肢ウィンドウ描画 ---
+
+    def _draw_selection(self, p):
+        """選択肢ウィンドウをゲーム風に描画する。"""
+        if not self._data:
+            return
+
+        items = self._data.get("items", [])
+        if not items:
+            return
+
+        semi = self._data.get("semi_transparent", False)
+
+        p.setFont(self._game_font)
+        fm = p.fontMetrics()
+        cursor_w = fm.horizontalAdvance(SEL_CURSOR_CHAR) + SEL_CURSOR_MARGIN
+
+        # ウィンドウサイズ計算（auto_resize の再現）
+        max_w = 0
+        for item in items:
+            w = fm.horizontalAdvance(item)
+            max_w = max(max_w, w)
+        win_w = cursor_w + max_w + SEL_TEXT_PADDING * 2
+        win_h = len(items) * SEL_LINE_HEIGHT + SEL_TEXT_PADDING * 2
+
+        # 画面中央に配置
+        win_x = (GAME_WIDTH - win_w) // 2
+        win_y = (GAME_HEIGHT - win_h) // 2
+
+        # desc（説明メッセージ）があれば先にメッセージウィンドウを描画
+        desc = self._data.get("desc")
+        if desc:
+            desc_text = desc.get("text", "")
+            desc_name = desc.get("name", "")
+            # メッセージウィンドウ位置に表示
+            bg_color = QColor(PYXEL_PALETTE[1])
+            bg_color.setAlpha(160)
+            p.fillRect(MSG_X, MSG_Y, MSG_W, MSG_H, bg_color)
+            p.setPen(QPen(PYXEL_PALETTE[7], 1))
+            p.drawRect(MSG_X, MSG_Y, MSG_W - 1, MSG_H - 1)
+
+            if desc_name:
+                name_text_w = fm.horizontalAdvance(desc_name)
+                name_w = name_text_w + NAME_WINDOW_PADDING * 2
+                name_x = MSG_X + 4
+                name_y = MSG_Y - NAME_WINDOW_HEIGHT
+                p.fillRect(name_x, name_y, name_w, NAME_WINDOW_HEIGHT, bg_color)
+                p.setPen(QPen(PYXEL_PALETTE[7], 1))
+                p.drawRect(name_x, name_y, name_w - 1, NAME_WINDOW_HEIGHT - 1)
+                p.setPen(PYXEL_PALETTE[7])
+                ty = name_y + (NAME_WINDOW_HEIGHT - fm.height()) // 2 + fm.ascent()
+                p.drawText(name_x + NAME_WINDOW_PADDING, ty, desc_name)
+
+            p.setPen(PYXEL_PALETTE[7])
+            desc_lines = desc_text.split("\n")[:MSG_MAX_LINES]
+            for i, line in enumerate(desc_lines):
+                p.drawText(MSG_X + MSG_TEXT_PADDING,
+                           MSG_Y + MSG_TEXT_PADDING + i * MSG_LINE_HEIGHT + fm.ascent(),
+                           line)
+
+            # 選択肢ウィンドウを上側に配置
+            win_y = MSG_Y - win_h - 8
+
+        # 選択肢ウィンドウ背景
+        bg_color = QColor(PYXEL_PALETTE[1])
+        if semi:
+            bg_color.setAlpha(160)
+        p.fillRect(win_x, win_y, win_w, win_h, bg_color)
+        p.setPen(QPen(PYXEL_PALETTE[7], 1))
+        p.drawRect(win_x, win_y, win_w - 1, win_h - 1)
+
+        # 選択肢描画
+        p.setPen(PYXEL_PALETTE[7])
+        tx = win_x + SEL_TEXT_PADDING
+        for i, item in enumerate(items):
+            iy = win_y + SEL_TEXT_PADDING + i * SEL_LINE_HEIGHT + fm.ascent()
+            if i == 0:
+                # 最初の項目にカーソル表示
+                p.drawText(tx, iy, SEL_CURSOR_CHAR)
+            p.drawText(tx + cursor_w, iy, item)
+
+    # --- テロップ描画 ---
+
+    def _draw_telop(self, p):
+        """テロップをゲーム風に描画する。"""
+        if not self._data:
+            return
+
+        lines = self._data.get("lines", [])
+        if not lines:
+            return
+
+        p.setFont(self._game_font)
+        fm = p.fontMetrics()
+
+        # スクロール速度表示（左上に配置）
+        speed = self._data.get("scroll_speed", 1.0)
+        p.setPen(PYXEL_PALETTE[10])
+        speed_text = f"scroll_speed: {speed}"
+        p.drawText(4, fm.ascent() + 2, speed_text)
+
+        # テロップ領域（上部にメタ情報の余白を確保）
+        info_margin_top = fm.height() + 8
+        info_margin_bottom = 4
+        usable_h = GAME_HEIGHT - info_margin_top - info_margin_bottom
+        total_h = len(lines) * TELOP_LINE_HEIGHT
+
+        # 画面に収まらない場合は行間を縮小（フォントサイズも調整）
+        if total_h > usable_h:
+            line_h = usable_h // len(lines)
+            # 行間がフォント高さより小さくなる場合はフォントを縮小
+            if line_h < fm.height():
+                scaled_font = QFont(self._game_font)
+                scaled_font.setPointSize(max(6, int(self._game_font.pointSize() * line_h / fm.height())))
+                p.setFont(scaled_font)
+                fm = p.fontMetrics()
+            start_y = info_margin_top
+        else:
+            line_h = TELOP_LINE_HEIGHT
+            start_y = info_margin_top + (usable_h - total_h) // 2
+
+        p.setPen(PYXEL_PALETTE[7])
+        for i, line in enumerate(lines):
+            if not line:
+                continue
+            text_w = fm.horizontalAdvance(line)
+            text_x = (GAME_WIDTH - text_w) // 2
+            text_y = start_y + i * line_h + fm.ascent()
+            p.drawText(text_x, text_y, line)
+
+
+class EditCommand(QUndoCommand):
+    """テキスト編集のUndoコマンド。
+
+    エントリ全体のスナップショットを保存し、Undo/Redo で差し替える。
+    """
+
+    def __init__(self, file_data, filepath, category, entry_id,
+                 old_value, new_value, description="Edit"):
+        super().__init__(description)
+        self._file_data = file_data
+        self._filepath = filepath
+        self._category = category
+        self._entry_id = entry_id
+        self._old_value = old_value
+        self._new_value = new_value
+
+    def redo(self):
+        self._apply(self._new_value)
+
+    def undo(self):
+        self._apply(self._old_value)
+
+    def _apply(self, value):
+        """データを in-place で差し替える（参照を維持）。"""
+        target = self._file_data[self._filepath][self._category][self._entry_id]
+        source = copy.deepcopy(value)
+        if isinstance(target, list):
+            target.clear()
+            target.extend(source)
+        elif isinstance(target, dict):
+            target.clear()
+            target.update(source)
+        else:
+            # フォールバック: 参照差し替え（通常は到達しない）
+            self._file_data[self._filepath][self._category][self._entry_id] = source
 
 
 class FileTreePanel(QTreeWidget):
@@ -181,11 +568,19 @@ class MessageEditor(QWidget):
         if self._page > 0:
             self._page -= 1
             self._show_page()
+            self._notify_page_change()
 
     def _next_page(self):
         if self._data and self._page < len(self._data) - 1:
             self._page += 1
             self._show_page()
+            self._notify_page_change()
+
+    def _notify_page_change(self):
+        """ページ切り替え時にプレビューを更新する。"""
+        window = self.window()
+        if hasattr(window, "_update_preview"):
+            window._update_preview()
 
     def _add_page(self):
         if self._data is not None:
@@ -364,20 +759,67 @@ class EditorWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Text Editor")
-        self.resize(1000, 650)
+        self.resize(1300, 700)
 
         self._file_data = {}  # { filepath: data }
         self._dirty = False
         self._current_entry = None  # (filepath, category, entry_id)
+        self._undo_stack = QUndoStack(self)
+        self._snapshot = None  # Undo 用の変更前スナップショット
+        self._pushing_undo = False  # push 中の再帰防止フラグ
 
         self._setup_ui()
         self._setup_menu()
         self._load_all_files()
 
+        self._closing = False
+        self._undo_stack.cleanChanged.connect(self._on_undo_clean_changed)
+        self._undo_stack.indexChanged.connect(lambda _: self._on_undo_or_redo())
+
     def _setup_ui(self):
-        # メインスプリッター
+        # メインコンテナ（検索バー + スプリッター）
+        main_widget = QWidget()
+        main_layout = QVBoxLayout(main_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # 検索バー（初期非表示）
+        self._search_bar = QWidget()
+        self._search_bar.setMaximumHeight(30)
+        search_layout = QHBoxLayout(self._search_bar)
+        search_layout.setContentsMargins(4, 2, 4, 2)
+        search_layout.addWidget(QLabel("Search:"))
+        self._search_input = QLineEdit()
+        self._search_input.setPlaceholderText("ID or text...")
+        self._search_input.textChanged.connect(self._on_search_changed)
+        self._search_input.returnPressed.connect(self._search_next)
+        search_layout.addWidget(self._search_input)
+        self._search_count_label = QLabel("")
+        search_layout.addWidget(self._search_count_label)
+        btn_prev = QPushButton("<")
+        btn_prev.setFixedWidth(30)
+        btn_prev.setToolTip("Previous (Shift+Enter)")
+        btn_prev.clicked.connect(self._search_prev)
+        search_layout.addWidget(btn_prev)
+        btn_next = QPushButton(">")
+        btn_next.setFixedWidth(30)
+        btn_next.setToolTip("Next (Enter)")
+        btn_next.clicked.connect(self._search_next)
+        search_layout.addWidget(btn_next)
+        btn_close = QPushButton("x")
+        btn_close.setFixedWidth(24)
+        btn_close.clicked.connect(self._close_search)
+        search_layout.addWidget(btn_close)
+        self._search_bar.hide()
+        main_layout.addWidget(self._search_bar)
+
+        self._search_results = []  # [(filepath, category, entry_id), ...]
+        self._search_index = -1
+
+        # メインスプリッター (3ペイン)
         splitter = QSplitter(Qt.Horizontal)
-        self.setCentralWidget(splitter)
+        main_layout.addWidget(splitter)
+        self.setCentralWidget(main_widget)
 
         # 左: ファイルツリー
         self._tree = FileTreePanel()
@@ -385,14 +827,14 @@ class EditorWindow(QMainWindow):
         self._tree.setMinimumWidth(180)
         splitter.addWidget(self._tree)
 
-        # 右: 編集エリア（スタックウィジェット）
-        right = QWidget()
-        right_layout = QVBoxLayout(right)
-        right_layout.setContentsMargins(0, 0, 0, 0)
+        # 中央: 編集エリア（スタックウィジェット）
+        center = QWidget()
+        center_layout = QVBoxLayout(center)
+        center_layout.setContentsMargins(0, 0, 0, 0)
 
         self._id_label = QLabel("Select an item from the tree")
         self._id_label.setStyleSheet("font-size: 14px; font-weight: bold; padding: 4px;")
-        right_layout.addWidget(self._id_label)
+        center_layout.addWidget(self._id_label)
 
         self._stack = QStackedWidget()
 
@@ -413,10 +855,14 @@ class EditorWindow(QMainWindow):
         self._telop_editor = TelopEditor()
         self._stack.addWidget(self._telop_editor)
 
-        right_layout.addWidget(self._stack)
-        splitter.addWidget(right)
+        center_layout.addWidget(self._stack)
+        splitter.addWidget(center)
 
-        splitter.setSizes([220, 780])
+        # 右: プレビューパネル
+        self._preview = PreviewPanel()
+        splitter.addWidget(self._preview)
+
+        splitter.setSizes([200, 500, 400])
 
         # ステータスバー
         self._statusbar = QStatusBar()
@@ -456,6 +902,16 @@ class EditorWindow(QMainWindow):
         # Edit メニュー
         edit_menu = menubar.addMenu("Edit")
 
+        self._undo_action = self._undo_stack.createUndoAction(self, "Undo")
+        self._undo_action.setShortcut(QKeySequence("Ctrl+Z"))
+        edit_menu.addAction(self._undo_action)
+
+        self._redo_action = self._undo_stack.createRedoAction(self, "Redo")
+        self._redo_action.setShortcut(QKeySequence("Ctrl+Y"))
+        edit_menu.addAction(self._redo_action)
+
+        edit_menu.addSeparator()
+
         add_id_action = QAction("Add ID...", self)
         add_id_action.triggered.connect(self._add_id)
         edit_menu.addAction(add_id_action)
@@ -464,6 +920,13 @@ class EditorWindow(QMainWindow):
         del_id_action.setShortcut(QKeySequence("Delete"))
         del_id_action.triggered.connect(self._delete_id)
         edit_menu.addAction(del_id_action)
+
+        edit_menu.addSeparator()
+
+        search_action = QAction("Search (Ctrl+F)", self)
+        search_action.setShortcut(QKeySequence("Ctrl+F"))
+        search_action.triggered.connect(self._toggle_search)
+        edit_menu.addAction(search_action)
 
     def _load_all_files(self):
         """data/text/ 内の全JSONを読み込む。"""
@@ -491,6 +954,9 @@ class EditorWindow(QMainWindow):
 
     def _reload_files(self):
         self._load_all_files()
+        self._undo_stack.clear()
+        self._snapshot = None
+        self._current_entry = None
         self._stack.setCurrentWidget(self._empty_page)
         self._id_label.setText("Select an item from the tree")
 
@@ -502,6 +968,7 @@ class EditorWindow(QMainWindow):
             self._stack.setCurrentWidget(self._empty_page)
             self._id_label.setText("Select a text entry to edit")
             self._current_entry = None
+            self._preview.clear_preview()
             return
 
         cat = info["category"]
@@ -510,7 +977,11 @@ class EditorWindow(QMainWindow):
         data = self._file_data[filepath]
         entry_data = data[cat][entry_id]
 
+        # 前のエントリの変更を確定
+        self._flush_undo()
+
         self._current_entry = (filepath, cat, entry_id)
+        self._snapshot = copy.deepcopy(entry_data)
         self._id_label.setText(f"{os.path.basename(filepath)} > {CATEGORY_LABELS[cat]} > {entry_id}")
 
         if cat == "messages":
@@ -523,16 +994,100 @@ class EditorWindow(QMainWindow):
             self._telop_editor.set_data(entry_data)
             self._stack.setCurrentWidget(self._telop_editor)
 
+        self._update_preview()
+
+    def _flush_undo(self):
+        """現在のエントリへの変更が未コミットなら UndoStack に push する。"""
+        if not self._current_entry or self._snapshot is None:
+            return
+        filepath, cat, entry_id = self._current_entry
+        if filepath not in self._file_data:
+            return
+        current_data = self._file_data[filepath][cat].get(entry_id)
+        if current_data is None:
+            return
+        current_copy = copy.deepcopy(current_data)
+        if current_copy != self._snapshot:
+            cmd = EditCommand(
+                self._file_data, filepath, cat, entry_id,
+                self._snapshot, current_copy,
+                f"Edit {cat}.{entry_id}",
+            )
+            self._pushing_undo = True
+            self._undo_stack.push(cmd)
+            self._pushing_undo = False
+            self._snapshot = copy.deepcopy(current_copy)
+
     def mark_dirty(self):
         self._dirty = True
         self._update_title()
+        self._update_preview()
+        # 変更をデバウンスして UndoStack に push
+        if not hasattr(self, "_undo_timer"):
+            self._undo_timer = QTimer(self)
+            self._undo_timer.setSingleShot(True)
+            self._undo_timer.setInterval(500)
+            self._undo_timer.timeout.connect(self._flush_undo)
+        self._undo_timer.start()
 
     def _update_title(self):
         marker = " *" if self._dirty else ""
         self.setWindowTitle(f"Text Editor{marker}")
 
+    def _on_undo_clean_changed(self, clean):
+        """UndoStack の clean 状態変化時。"""
+        if not clean:
+            self._dirty = True
+            self._update_title()
+
+    def _on_undo_or_redo(self):
+        """Undo/Redo 実行後にエディタUIを再読み込みする。"""
+        if self._pushing_undo or self._closing:
+            return
+        if not self._current_entry:
+            return
+        filepath, cat, entry_id = self._current_entry
+        if filepath not in self._file_data:
+            return
+        data = self._file_data[filepath]
+        if entry_id not in data.get(cat, {}):
+            return
+        entry_data = data[cat][entry_id]
+        self._snapshot = copy.deepcopy(entry_data)
+
+        # エディタの表示を更新（_updating フラグで再帰防止）
+        if cat == "messages":
+            self._msg_editor.set_data(entry_data)
+        elif cat == "selections":
+            self._sel_editor.set_data(entry_data)
+        elif cat == "telops":
+            self._telop_editor.set_data(entry_data)
+
+        self._dirty = True
+        self._update_title()
+        self._update_preview()
+
+    def _update_preview(self):
+        """現在の編集内容でプレビューを更新する。"""
+        if not self._current_entry:
+            self._preview.clear_preview()
+            return
+
+        filepath, cat, entry_id = self._current_entry
+        data = self._file_data[filepath]
+        entry_data = data[cat][entry_id]
+
+        page = 0
+        if cat == "messages":
+            page = self._msg_editor._page
+
+        self._preview.set_preview(cat, entry_data, page)
+
     def _save_all(self):
         """変更を全ファイルに保存する。"""
+        # 未確定の変更を flush
+        self._flush_undo()
+
         for filepath, data in self._file_data.items():
             try:
                 with open(filepath, "w", encoding="utf-8") as f:
@@ -543,6 +1098,7 @@ class EditorWindow(QMainWindow):
 
         self._dirty = False
         self._update_title()
+        self._undo_stack.setClean()
         self._statusbar.showMessage(
             f"Saved {len(self._file_data)} file(s)", 3000)
 
@@ -632,6 +1188,124 @@ class EditorWindow(QMainWindow):
         self._stack.setCurrentWidget(self._empty_page)
         self._statusbar.showMessage(f"Deleted: {cat}.{entry_id}", 3000)
 
+    # --- 検索機能 ---
+
+    def _toggle_search(self):
+        """検索バーの表示/非表示を切り替える。"""
+        if self._search_bar.isVisible():
+            self._close_search()
+        else:
+            self._search_bar.show()
+            self._search_input.setFocus()
+            self._search_input.selectAll()
+
+    def _close_search(self):
+        """検索バーを閉じる。"""
+        self._search_bar.hide()
+        self._search_results.clear()
+        self._search_index = -1
+        self._search_count_label.setText("")
+
+    def _on_search_changed(self, text):
+        """検索テキスト変更時のインクリメンタル検索。"""
+        self._search_results.clear()
+        self._search_index = -1
+
+        query = text.strip().lower()
+        if not query:
+            self._search_count_label.setText("")
+            return
+
+        # 全エントリを検索
+        for filepath, data in self._file_data.items():
+            for cat in CATEGORIES:
+                if cat not in data:
+                    continue
+                for entry_id, entry_data in data[cat].items():
+                    if self._entry_matches(query, entry_id, cat, entry_data):
+                        self._search_results.append((filepath, cat, entry_id))
+
+        count = len(self._search_results)
+        self._search_count_label.setText(f"{count} hit(s)")
+
+        if count > 0:
+            self._search_index = 0
+            self._navigate_to_search_result()
+
+    def _entry_matches(self, query, entry_id, cat, entry_data):
+        """エントリが検索クエリにマッチするか判定する。"""
+        # ID名で検索
+        if query in entry_id.lower():
+            return True
+
+        # テキスト内容で検索
+        if cat == "messages":
+            for msg in entry_data:
+                if isinstance(msg, str):
+                    if query in msg.lower():
+                        return True
+                else:
+                    if query in msg.get("text", "").lower():
+                        return True
+                    if query in msg.get("name", "").lower():
+                        return True
+        elif cat == "selections":
+            for item in entry_data.get("items", []):
+                if query in item.lower():
+                    return True
+            desc = entry_data.get("desc")
+            if desc:
+                if query in desc.get("text", "").lower():
+                    return True
+                if query in desc.get("name", "").lower():
+                    return True
+        elif cat == "telops":
+            for line in entry_data.get("lines", []):
+                if query in line.lower():
+                    return True
+
+        return False
+
+    def _search_next(self):
+        """次の検索結果に移動する。"""
+        if not self._search_results:
+            return
+        self._search_index = (self._search_index + 1) % len(self._search_results)
+        self._navigate_to_search_result()
+
+    def _search_prev(self):
+        """前の検索結果に移動する。"""
+        if not self._search_results:
+            return
+        self._search_index = (self._search_index - 1) % len(self._search_results)
+        self._navigate_to_search_result()
+
+    def _navigate_to_search_result(self):
+        """現在の検索結果にツリーのカーソルを移動する。"""
+        if self._search_index < 0 or self._search_index >= len(self._search_results):
+            return
+
+        filepath, cat, entry_id = self._search_results[self._search_index]
+        self._search_count_label.setText(
+            f"{self._search_index + 1}/{len(self._search_results)}")
+
+        # ツリーアイテムを探してセレクトする
+        root = self._tree.topLevelItem(0)
+        for fi in range(self._tree.topLevelItemCount()):
+            file_item = self._tree.topLevelItem(fi)
+            file_info = file_item.data(0, Qt.UserRole)
+            if file_info and file_info.get("path") == filepath:
+                for ci in range(file_item.childCount()):
+                    cat_item = file_item.child(ci)
+                    cat_info = cat_item.data(0, Qt.UserRole)
+                    if cat_info and cat_info.get("category") == cat:
+                        for ei in range(cat_item.childCount()):
+                            entry_item = cat_item.child(ei)
+                            entry_info = entry_item.data(0, Qt.UserRole)
+                            if entry_info and entry_info.get("entry_id") == entry_id:
+                                self._tree.setCurrentItem(entry_item)
+                                return
+
     def closeEvent(self, event):
         if self._dirty:
             reply = QMessageBox.question(
@@ -641,13 +1315,13 @@ class EditorWindow(QMainWindow):
             )
             if reply == QMessageBox.Save:
                 self._save_all()
-                event.accept()
-            elif reply == QMessageBox.Discard:
-                event.accept()
-            else:
+            elif reply == QMessageBox.Cancel:
                 event.ignore()
-        else:
-            event.accept()
+                return
+
+        self._closing = True
+        self._undo_stack.clear()
+        event.accept()
 
 
 def main():
