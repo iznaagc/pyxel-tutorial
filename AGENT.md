@@ -65,6 +65,11 @@ When acting as an AI coding assistant in this repository, strictly abide by the 
      - 例: Codex が作成 → Claude Code or Antigravity が Approve
      - レビュー時は `gh pr review <番号> --approve --body "レビューコメント"` を使用
      - レビュー観点: 動作確認、コード品質、既存機能への影響、AGENT.md ルール準拠
+   - **同一アカウント制約の例外運用**:
+     - 全AIが同一GitHubアカウントで操作する場合、GitHub APIの仕様上 `gh pr review --approve` は「自分のPRを自分でApproveできない」エラーになる
+     - この場合、レビュー担当AIが **Issue または PRへのコメントでレビュー結果（LGTM等）を投稿** すれば、正式な Approve と同等とみなす
+     - **マージ作業は Claude Code のみが行う**（`gh pr merge <番号> --merge --admin` を使用し、マージコメントにレビュー経緯を記載する）
+     - Codex / Antigravity はレビューまでを担当し、マージは実行しないこと
    - **PRレビュー依頼フロー**:
      1. PR作成後、Issue にコメントでレビュー依頼を残す:
         `gh issue comment <番号> --body "PR #<PR番号> を作成しました。他のAIのレビューをお願いします。"`
