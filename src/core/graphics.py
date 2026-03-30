@@ -51,10 +51,14 @@ class Image:
             pyxel.dither(self.alpha)
         
         try:
-            pyxel.blt(self.x, self.y, self.img, self.u, self.v, self.w, self.h, self.colkey)
+            self._blt()
         finally:
             if self.alpha < 1.0 and has_dither:
                 pyxel.dither(1.0)
+                
+    def _blt(self):
+        """実際の blt 描画処理"""
+        pyxel.blt(self.x, self.y, self.img, self.u, self.v, self.w, self.h, self.colkey)
 
 
 class Sprite(Image):
@@ -74,15 +78,15 @@ class Sprite(Image):
         self.scale = 1.0
         self.rotate = 0.0
         
-    def move(self, vx, vy):
-        """現在位置から指定速度分移動する。
+    def move(self, dx, dy):
+        """現在位置から指定距離分移動する。
         
         Args:
-            vx (float): X方向の移動量
-            vy (float): Y方向の移動量
+            dx (float): X方向の移動量
+            dy (float): Y方向の移動量
         """
-        self.x += vx
-        self.y += vy
+        self.x += dx
+        self.y += dy
 
     def update(self):
         """毎フレームの座標更新処理など。"""
@@ -90,31 +94,20 @@ class Sprite(Image):
         self.x += self.vx
         self.y += self.vy
 
-    def draw(self):
+    def _blt(self):
         """スプライトを描画する。
         （Pyxelが拡大縮小や回転に対応している場合は反映し、非対応なら通常描画する）
         """
-        if self.alpha <= 0.0:
-            return
-
-        has_dither = hasattr(pyxel, "dither")
-        if self.alpha < 1.0 and has_dither:
-            pyxel.dither(self.alpha)
-        
-        try:
-            global _ext_blt_supported
-            if _ext_blt_supported:
-                try:
-                    pyxel.blt(
-                        self.x, self.y, self.img, 
-                        self.u, self.v, self.w, self.h, 
-                        self.colkey, self.rotate, self.scale
-                    )
-                except (TypeError, ValueError):
-                    _ext_blt_supported = False
-                    pyxel.blt(self.x, self.y, self.img, self.u, self.v, self.w, self.h, self.colkey)
-            else:
+        global _ext_blt_supported
+        if _ext_blt_supported:
+            try:
+                pyxel.blt(
+                    self.x, self.y, self.img, 
+                    self.u, self.v, self.w, self.h, 
+                    self.colkey, self.rotate, self.scale
+                )
+            except (TypeError, ValueError):
+                _ext_blt_supported = False
                 pyxel.blt(self.x, self.y, self.img, self.u, self.v, self.w, self.h, self.colkey)
-        finally:
-            if self.alpha < 1.0 and has_dither:
-                pyxel.dither(1.0)
+        else:
+            pyxel.blt(self.x, self.y, self.img, self.u, self.v, self.w, self.h, self.colkey)
