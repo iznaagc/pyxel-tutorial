@@ -45,8 +45,49 @@ class Audio:
     @staticmethod
     def stop_ch(ch: int):
         """指定したチャンネルの音声を停止する。
-        
+
         Args:
             ch: 停止するチャンネル（0〜3）
         """
         pyxel.stop(ch)
+
+    # --- 外部ファイルベースの再生 ---
+
+    @staticmethod
+    def play_bgm_file(filename: str, ch: int = 0):
+        """外部音声ファイルをBGMとしてループ再生する。
+
+        Args:
+            filename: assets/bgm/ 内のファイル名 (例: "field.ogg")
+            ch: 再生チャンネル (デフォルト 0)
+        """
+        import config
+        slot = config.ASSETS.load_sound(filename, subdir="bgm")
+        pyxel.play(ch, slot, loop=True)
+
+    @staticmethod
+    def play_se_file(filename: str, ch: int = 3):
+        """外部音声ファイルをSE（効果音）として再生する。
+
+        Args:
+            filename: assets/se/ 内のファイル名 (例: "click.wav")
+            ch: 再生チャンネル (デフォルト 3)
+        """
+        import config
+        slot = config.ASSETS.load_sound(filename, subdir="se")
+        pyxel.play(ch, slot)
+
+    @staticmethod
+    def play_me_file(filename: str, ch: int = 0):
+        """外部音声ファイルをME（短い音楽）として一度だけ再生する。
+
+        注意: BGMと同じチャンネルを使用するため、BGMは停止します。
+        ME終了後、必要に応じて利用側で再度BGMを再生してください。
+
+        Args:
+            filename: assets/bgm/ 内のファイル名
+            ch: 再生チャンネル (デフォルト 0)
+        """
+        import config
+        slot = config.ASSETS.load_sound(filename, subdir="bgm")
+        pyxel.play(ch, slot, loop=False)

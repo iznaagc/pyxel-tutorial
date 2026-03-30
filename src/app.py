@@ -14,6 +14,7 @@ class App:
     def __init__(self):
         pyxel.init(config.SCREEN_WIDTH, config.SCREEN_HEIGHT, title="My Game")
         config.init_font()
+        config.init_assets()
         config.init_text_manager()
 
         # シーンマネージャーの初期化
