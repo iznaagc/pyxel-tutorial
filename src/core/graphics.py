@@ -28,9 +28,27 @@ class Image:
         self.colkey = colkey
         self.alpha = 1.0
 
+    @classmethod
+    def from_file(cls, filename, x=0, y=0, colkey=None):
+        """外部PNGファイルからImageを生成する。
+
+        Args:
+            filename: assets/images/ 内のファイル名 (例: "title_bg.png")
+            x: 描画X座標
+            y: 描画Y座標
+            colkey: 透過色 (None=透過なし)
+        Returns:
+            Image instance
+        """
+        import config
+        pyxel_img = config.ASSETS.load_image(filename)
+        return cls(x=x, y=y, img=pyxel_img,
+                   u=0, v=0, w=pyxel_img.width, h=pyxel_img.height,
+                   colkey=colkey)
+
     def set_fade(self, alpha):
         """透明度を設定し、フェード効果を反映させる。
-        
+
         Args:
             alpha (float): 0.0 (透明) ～ 1.0 (不透明) の値
         """

@@ -24,6 +24,9 @@ COMPILED_DIR = os.path.join(DATA_DIR, "compiled")
 # フォントオブジェクト（pyxel.init() 後に init_font() で初期化する）
 FONT = None
 
+# アセットマネージャー（init_assets() で初期化する）
+ASSETS = None
+
 # テキストマネージャー（init_text_manager() で初期化する）
 TEXT_MANAGER = None
 
@@ -32,6 +35,13 @@ def init_font():
     """pyxel.init() の後に呼び出してフォントを読み込む。"""
     global FONT
     FONT = pyxel.Font(FONT_PATH, FONT_SIZE)
+
+
+def init_assets():
+    """pyxel.init() の後に呼び出してアセットマネージャーを初期化する。"""
+    global ASSETS
+    from core.asset_manager import AssetManager
+    ASSETS = AssetManager()
 
 
 def init_text_manager():
