@@ -476,11 +476,12 @@ class FileTreePanel(QTreeWidget):
             return
 
         from PySide6.QtWidgets import QMenu
-        menu = QMenu(self)
+        menu = QMenu()
         rename_action = menu.addAction("Rename ID...")
         action = menu.exec(self.viewport().mapToGlobal(pos))
         if action == rename_action:
             self.rename_requested.emit(item)
+        menu.deleteLater()
 
     def load_files(self, file_data_map):
         """{ filepath: data } からツリーを構築する。"""
@@ -1108,15 +1109,9 @@ class EditorWindow(QMainWindow):
             return
         data = self._file_data[filepath]
 
-        # リネーム Undo/Redo でIDが変わった場合: ツリー再構築して新IDを探す
+        # リネーム Undo/Redo でIDが変わった場合: ツリー再構築してリセット
         if entry_id not in data.get(cat, {}):
             self._tree.load_files(self._file_data)
-            # 現在のUndoコマンドから新しいIDを特定
-            for eid in data.get(cat, {}):
-                if eid != entry_id:
-                    # データの中身が同じものを探す
-                    pass
-            # ツリーから選択中のエントリをリセット
             self._current_entry = None
             self._snapshot = None
             self._stack.setCurrentWidget(self._empty_page)
