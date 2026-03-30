@@ -32,13 +32,23 @@ When acting as an AI coding assistant in this repository, strictly abide by the 
      - `gh issue list --state open` で未クローズのIssue一覧を確認する
      - `gh pr list --state open` で作業中のPR一覧を確認する
      - 他のAIが着手宣言済みのIssueには手を出さない
+   - **ブランチ運用**:
+     - ベースブランチは `develop`（main ではない）
+     - 機能ブランチは `develop` から切り、PRも `develop` に向けて出す
+     - `main` への反映は `develop` からのマージで行う（人間が判断）
+     - **main / develop ブランチへの直接コミットは禁止**
    - **着手時**:
      - Issueにコメントで着手宣言する（例: `🤖 **Claude Code** が着手します（ブランチ: task/15-xxx）`）
-     - ブランチを `task/<Issue番号>-簡潔な説明` の形式で作成する
+     - ブランチを `task/<Issue番号>-簡潔な説明` の形式で `develop` から作成する
      - 他の作業中タスクと変更対象ファイルが重なる場合は人間に相談する
    - **完了時**:
-     - PRを作成し、本文に `Closes #Issue番号` を含める
+     - PRを `develop` ブランチに向けて作成し、本文に `Closes #Issue番号` を含める
      - 実装内容の解説とスクリーンショット（該当する場合）をPRに記載する
+   - **PRレビュールール**:
+     - PRは **作成者以外のAI** が Approve しないとマージできない
+     - 例: Claude Code が作成 → Codex or Antigravity が Approve
+     - 例: Codex が作成 → Claude Code or Antigravity が Approve
+     - レビュー時は `gh pr review <番号> --approve --body "レビューコメント"` を使用
+     - レビュー観点: 動作確認、コード品質、既存機能への影響、AGENT.md ルール準拠
    - **コンテキスト制限時**:
      - 進捗をコミット＆プッシュし、Issueにハンドオフコメントを残す
-   - **mainブランチへの直接コミットは禁止**
