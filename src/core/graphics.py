@@ -111,3 +111,77 @@ class Sprite(Image):
                 pyxel.blt(self.x, self.y, self.img, self.u, self.v, self.w, self.h, self.colkey)
         else:
             pyxel.blt(self.x, self.y, self.img, self.u, self.v, self.w, self.h, self.colkey)
+
+
+class FadeOverlay(Image):
+    """画面のフェードイン・フェードアウトを行うオーバーレイ。
+    Imageを継承し、指定色の矩形として画面全体を覆う。
+    
+    Attributes:
+        color (int): 0(黒) または 7(白)などフェードに使用する色
+        speed (float): 1フレームあたりの透明度変化量
+        fade_state (int): 0: 待機, 1: フェードイン(暗→明), 2: フェードアウト(明→暗)
+    """
+    
+    FADE_IN = 1
+    FADE_OUT = 2
+    
+    def __init__(self, color=0, speed=0.02):
+        import config
+        sw = getattr(config, "SCREEN_WIDTH", 480)
+        sh = getattr(config, "SCREEN_HEIGHT", 270)
+        # 背景画像等に隠して待機できるよう、1x1サイズで初期化 (描画負荷低減)
+        super().__init__(0, 0, 0, 0, 0, 1, 1, None)
+        self.color = color
+        self.speed = speed
+        self.fade_state = 0
+        self.alpha = 0.0
+        self._target_w = sw
+        self._target_h = sh
+
+    def fade_in(self, speed=None):
+        """フェードイン（暗/白→透明）を開始する"""
+        if speed is not None:
+            self.speed = speed
+        self.w = self._target_w
+        self.h = self._target_h
+        self.alpha = 1.0
+        self.fade_state = self.FADE_IN
+
+    def fade_out(self, speed=None, color=None):
+        """フェードアウト（透明→暗/白）を開始する"""
+        if speed is not None:
+            self.speed = speed
+        if color is not None:
+            self.color = color
+        self.w = self._target_w
+        self.h = self._target_h
+        self.alpha = 0.0
+        self.fade_state = self.FADE_OUT
+
+    def update(self):
+        super().update()
+        if self.fade_state == self.FADE_IN:
+            self.alpha -= self.speed
+            if self.alpha <= 0.0:
+                self.alpha = 0.0
+                self.fade_state = 0
+                self.w = 1  # 負荷軽減のため1x1に戻す
+                self.h = 1
+        elif self.fade_state == self.FADE_OUT:
+            self.alpha += self.speed
+            if self.alpha >= 1.0:
+                self.alpha = 1.0
+                self.fade_state = 0
+
+    def is_fading(self):
+        """フェード中かどうかを返す"""
+        return self.fade_state != 0
+
+    def is_fade_out_completed(self):
+        """フェードアウトが完全に終了して画面が隠れているか"""
+        return self.fade_state == 0 and self.alpha >= 1.0
+
+    def _blt(self):
+        """オーバーライド: bltの代わりにrect(矩形塗りつぶし)で画面を覆う"""
+        pyxel.rect(self.x, self.y, self.w, self.h, self.color)
