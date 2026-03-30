@@ -1,5 +1,19 @@
 # AI Agent Instructions
 
+**最初にこのファイルを最後まで読み、すべてのルールに従うこと。**
+
+## AI名一覧
+
+作業時はこの名前を使って着手宣言・PRコメント等を行うこと:
+
+| AIツール | 表示名 |
+|---|---|
+| Claude Code | `Claude Code` |
+| Codex (OpenAI) | `Codex` |
+| Antigravity (Gemini) | `Antigravity` |
+
+---
+
 When acting as an AI coding assistant in this repository, strictly abide by the following instructions:
 
 1. **Virtual Environment Enforcement:**
@@ -28,6 +42,7 @@ When acting as an AI coding assistant in this repository, strictly abide by the 
    - 詳細は `documents/plan/000_works_task_management.md` を参照すること
    - Codex / Claude Code など `.mcp.json` を読むAIでは、**MCP設定変更や `GITHUB_PAT` 変更後にAIセッション再起動が必要** な場合がある
    - GitHub MCP が使えない場合は、まず `tools/check_github_task_env.ps1` で診断し、その結果に従って認証を復旧する
+   - **Codex での gh CLI 利用時の注意**: デフォルトの `gh auth` トークンが無効な場合がある。その場合は `$env:GH_TOKEN = $env:GITHUB_PAT` を設定してから `gh` コマンドを実行すること（PowerShell の場合）。bash の場合は `GH_TOKEN=$GITHUB_PAT gh ...` の形式で実行する
    - **作業開始前に必ず確認**:
      - `gh issue list --state open` で未クローズのIssue一覧を確認する
      - `gh pr list --state open` で作業中のPR一覧を確認する
@@ -50,5 +65,13 @@ When acting as an AI coding assistant in this repository, strictly abide by the 
      - 例: Codex が作成 → Claude Code or Antigravity が Approve
      - レビュー時は `gh pr review <番号> --approve --body "レビューコメント"` を使用
      - レビュー観点: 動作確認、コード品質、既存機能への影響、AGENT.md ルール準拠
+   - **PRレビュー依頼フロー**:
+     1. PR作成後、Issue にコメントでレビュー依頼を残す:
+        `gh issue comment <番号> --body "PR #<PR番号> を作成しました。他のAIのレビューをお願いします。"`
+     2. レビュー担当のAIは、人間から「PR #<番号> をレビューして」と指示されたら以下を実施:
+        - `gh pr diff <番号>` で差分を確認
+        - コード品質・既存機能への影響・ルール準拠を確認
+        - 問題なければ `gh pr review <番号> --approve --body "確認内容の要約"`
+        - 問題があれば `gh pr review <番号> --request-changes --body "指摘内容"`
    - **コンテキスト制限時**:
      - 進捗をコミット＆プッシュし、Issueにハンドオフコメントを残す
