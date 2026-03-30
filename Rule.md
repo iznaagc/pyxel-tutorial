@@ -14,3 +14,6 @@
 ## File Structure
 - Main entry point is `src/main.py`.
 - Keep the root directory clean; place source code in `src/` and resources in `assets/`.
+
+## Git Workflow & AI Guidelines
+- **Base Branch Rule:** ALWAYS use `develop` as the base branch when creating a new task or feature branch. Do not branch off from `main` or open Pull Requests against `main`. This is a critical rule to prevent merge conflicts and preserve the main release line.

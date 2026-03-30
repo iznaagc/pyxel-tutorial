@@ -14,8 +14,8 @@ class Audio:
         pyxel.playm(music_no, loop=loop)
 
     @staticmethod
-    def stop_bgm():
-        """BGM（すべての音声）の再生を停止する。"""
+    def stop_all():
+        """すべての音声（BGM、SE、ME）の再生を停止する。"""
         pyxel.stop()
 
     @staticmethod
@@ -32,6 +32,10 @@ class Audio:
     def play_me(music_no: int):
         """ME（ファンファーレなどの短い音楽）を再生する。
         一度だけ再生し、ループしない。
+        
+        注意 (Note): 
+        MEはBGMと同じミュージック機構を使うため、再生開始時に現在のBGMが停止します。
+        MEが終了したあと、必要に応じて利用側で再度BGMを再生（復帰）させる必要があります。
         
         Args:
             music_no: 再生する音楽（ミュージック）番号
