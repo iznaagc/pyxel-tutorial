@@ -16,6 +16,10 @@ _TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.abspath(os.path.join(_TOOLS_DIR, ".."))
 
 TEXT_DIR = os.path.join(_PROJECT_ROOT, "data", "text")
+MAP_DIR = os.path.join(_PROJECT_ROOT, "data", "maps")
+CHAR_DIR = os.path.join(_PROJECT_ROOT, "data", "characters")
+TILESET_DIR = os.path.join(_PROJECT_ROOT, "assets", "tilesets")
+SPRITE_DIR = os.path.join(_PROJECT_ROOT, "assets", "images", "sprite")
 COMPILER_PATH = os.path.join(_TOOLS_DIR, "compiler.py")
 
 from PySide6.QtWidgets import (
@@ -23,12 +27,12 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QTextEdit,
     QCheckBox, QSpinBox, QDoubleSpinBox, QStackedWidget, QPushButton,
     QStatusBar, QMenuBar, QListWidget, QMessageBox, QInputDialog,
-    QAbstractItemView,
+    QAbstractItemView, QComboBox, QFormLayout, QScrollArea, QGroupBox,
 )
 from PySide6.QtCore import Qt, QTimer, QRectF, Signal
 from PySide6.QtGui import (
     QAction, QKeySequence, QFont, QFontDatabase, QPainter, QColor, QPen,
-    QBrush, QPixmap, QUndoStack, QUndoCommand,
+    QBrush, QPixmap, QUndoStack, QUndoCommand, QActionGroup, QImage,
 )
 
 # カテゴリ表示名
@@ -36,8 +40,87 @@ CATEGORY_LABELS = {
     "messages": "Messages",
     "selections": "Selections",
     "telops": "Telops",
+    "events": "Events",
 }
-CATEGORIES = ["messages", "selections", "telops"]
+CATEGORIES = ["messages", "selections", "telops", "events"]
+
+EVENT_CMD_FIELDS = {
+    "wait": [("duration", "Duration", "int", 60)],
+    "message": [("id", "Message ID", "str", "")],
+    "selection": [("id", "Selection ID", "str", "")],
+    "telop": [("id", "Telop ID", "str", "")],
+    "show_picture": [
+        ("no", "Picture No", "int", 1),
+        ("file", "File", "str", ""),
+        ("x", "X", "int", 0),
+        ("y", "Y", "int", 0),
+        ("opacity", "Opacity", "int", 100),
+        ("colkey", "Color Key", "int_or_none", None),
+    ],
+    "move_picture": [
+        ("no", "Picture No", "int", 1),
+        ("x", "X", "int_or_none", None),
+        ("y", "Y", "int_or_none", None),
+        ("opacity", "Opacity", "int_or_none", None),
+        ("duration", "Duration", "int", 60),
+    ],
+    "erase_picture": [("no", "Picture No", "int", 1)],
+    "fadein": [("duration", "Duration", "int", 60)],
+    "fadeout": [("duration", "Duration", "int", 60)],
+    "play_bgm": [("file", "File", "str", "")],
+    "stop_bgm": [("fadeout", "Fadeout (ms)", "int", 0)],
+    "play_se": [
+        ("sound_no", "Sound No", "int", 0),
+        ("ch", "Channel", "int", 3),
+    ],
+    "change_scene": [("scene", "Scene", "str", "")],
+}
+
+STAT_KEYS = ["hp", "mp", "str", "vit", "int", "mnd", "luk"]
+STAT_LABELS = {
+    "hp": "HP",
+    "mp": "MP",
+    "str": "STR",
+    "vit": "VIT",
+    "int": "INT",
+    "mnd": "MND",
+    "luk": "LUK",
+}
+PHYSICAL_SKILL_KEYS = ["dagger", "sword", "katana", "axe", "spear", "staff", "claw", "bow"]
+PHYSICAL_SKILL_LABELS = {
+    "dagger": "短剣",
+    "sword": "剣",
+    "katana": "刀",
+    "axe": "斧",
+    "spear": "槍",
+    "staff": "棍",
+    "claw": "爪",
+    "bow": "弓",
+}
+MAGIC_SKILL_KEYS = ["healing", "elemental", "buff", "debuff"]
+MAGIC_SKILL_LABELS = {
+    "healing": "回復",
+    "elemental": "元素",
+    "buff": "強化",
+    "debuff": "弱体",
+}
+GRAPHIC_CUT_SIZE = 32
+DEFAULT_CHARACTER = {
+    "name": "新規キャラクター",
+    "initial_job": 0,
+    "personality": 0,
+    "graphics": {
+        "face": {"image": "", "selection_id": 0},
+        "walk": {"image": "", "selection_id": 0},
+        "battle": {"image": "", "selection_id": 0},
+    },
+    "base_stats": {key: 0 for key in STAT_KEYS},
+    "growth_rates": {
+        "stats": {key: 0 for key in STAT_KEYS},
+        "physical_skills": {key: 0 for key in PHYSICAL_SKILL_KEYS},
+        "magic_skills": {key: 0 for key in MAGIC_SKILL_KEYS},
+    },
+}
 
 # Pyxel パレット (16色)
 PYXEL_PALETTE = [
@@ -171,6 +254,8 @@ class PreviewPanel(QWidget):
                 self._draw_selection(buf)
             elif self._category == "telops":
                 self._draw_telop(buf)
+            elif self._category == "events":
+                self._draw_events(buf)
         else:
             # 何も選択されていない場合
             buf.setFont(self._game_font)
@@ -417,6 +502,27 @@ class PreviewPanel(QWidget):
             text_y = start_y + i * line_h + fm.ascent()
             p.drawText(text_x, text_y, line)
 
+    def _draw_events(self, p):
+        """イベントコマンド概要を簡易表示する。"""
+        if not isinstance(self._data, list):
+            return
+
+        p.setFont(self._game_font)
+        p.setPen(PYXEL_PALETTE[7])
+        p.drawText(16, 24, "Event Commands")
+        p.setPen(PYXEL_PALETTE[11])
+        p.drawText(16, 46, f"{len(self._data)} command(s)")
+
+        y = 76
+        for index, cmd in enumerate(self._data[:8]):
+            p.setPen(PYXEL_PALETTE[6])
+            p.drawText(16, y, f"{index + 1:02d}. {cmd.get('cmd', '(unknown)')}")
+            y += 22
+
+        if len(self._data) > 8:
+            p.setPen(PYXEL_PALETTE[13])
+            p.drawText(16, y + 4, f"... and {len(self._data) - 8} more")
+
 
 class EditCommand(QUndoCommand):
     """テキスト編集のUndoコマンド。
@@ -453,6 +559,29 @@ class EditCommand(QUndoCommand):
         else:
             # フォールバック: 参照差し替え（通常は到達しない）
             self._file_data[self._filepath][self._category][self._entry_id] = source
+
+
+class MapEditCommand(QUndoCommand):
+    """マップ全体編集のUndoコマンド。"""
+
+    def __init__(self, map_file_data, filepath, old_value, new_value, description="Edit Map"):
+        super().__init__(description)
+        self._map_file_data = map_file_data
+        self._filepath = filepath
+        self._old_value = old_value
+        self._new_value = new_value
+
+    def redo(self):
+        self._apply(self._new_value)
+
+    def undo(self):
+        self._apply(self._old_value)
+
+    def _apply(self, value):
+        target = self._map_file_data[self._filepath]
+        source = copy.deepcopy(value)
+        target.clear()
+        target.update(source)
 
 
 class RenameCommand(QUndoCommand):
@@ -837,6 +966,1160 @@ class TelopEditor(QWidget):
             window.mark_dirty()
 
 
+class EventEditor(QWidget):
+    """Events 編集フォーム。"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._data = None
+        self._updating = False
+        self._field_widgets = {}
+        self._current_index = -1
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
+
+        header = QHBoxLayout()
+        header.addWidget(QLabel("Commands:"))
+        header.addStretch()
+        self._btn_add = QPushButton("Add Command")
+        self._btn_add.clicked.connect(self._add_command)
+        header.addWidget(self._btn_add)
+        self._btn_del = QPushButton("Delete Command")
+        self._btn_del.clicked.connect(self._delete_command)
+        header.addWidget(self._btn_del)
+        layout.addLayout(header)
+
+        body = QHBoxLayout()
+        layout.addLayout(body, 1)
+
+        self._cmd_list = QListWidget()
+        self._cmd_list.setDragDropMode(QAbstractItemView.InternalMove)
+        self._cmd_list.setSelectionMode(QAbstractItemView.SingleSelection)
+        self._cmd_list.currentRowChanged.connect(self._on_cmd_selected)
+        self._cmd_list.model().rowsMoved.connect(self._on_rows_moved)
+        body.addWidget(self._cmd_list, 1)
+
+        detail = QWidget()
+        detail_layout = QVBoxLayout(detail)
+        detail_layout.setContentsMargins(0, 0, 0, 0)
+
+        type_row = QHBoxLayout()
+        type_row.addWidget(QLabel("Command Type:"))
+        self._type_combo = QComboBox()
+        self._type_combo.addItems(list(EVENT_CMD_FIELDS.keys()))
+        self._type_combo.currentTextChanged.connect(self._on_type_changed)
+        type_row.addWidget(self._type_combo, 1)
+        detail_layout.addLayout(type_row)
+
+        self._field_form = QFormLayout()
+        detail_layout.addLayout(self._field_form)
+        detail_layout.addStretch()
+        body.addWidget(detail, 2)
+
+    def set_data(self, event_list):
+        self._data = event_list
+        self._updating = True
+        self._refresh_command_list()
+        if self._data:
+            next_row = min(max(self._current_index, 0), len(self._data) - 1)
+            self._cmd_list.setCurrentRow(next_row)
+        else:
+            self._current_index = -1
+            self._build_fields(None, None)
+        self._updating = False
+
+    def _refresh_command_list(self):
+        self._cmd_list.clear()
+        if not isinstance(self._data, list):
+            return
+        for index, cmd in enumerate(self._data):
+            self._cmd_list.addItem(f"{index + 1:02d}: {cmd.get('cmd', '(unknown)')}")
+
+    def _clear_fields(self):
+        while self._field_form.rowCount():
+            self._field_form.removeRow(0)
+        self._field_widgets.clear()
+
+    def _build_fields(self, cmd_type, cmd):
+        self._clear_fields()
+        if not cmd_type or cmd is None:
+            return
+
+        for key, label, field_type, default in EVENT_CMD_FIELDS.get(cmd_type, []):
+            if field_type == "str":
+                widget = QLineEdit()
+                widget.setText(str(cmd.get(key, default)))
+                widget.textChanged.connect(self._on_changed)
+                self._field_form.addRow(label + ":", widget)
+                self._field_widgets[key] = (field_type, widget)
+            elif field_type == "int":
+                widget = QSpinBox()
+                widget.setRange(-999999, 999999)
+                widget.setValue(int(cmd.get(key, default)))
+                widget.valueChanged.connect(self._on_changed)
+                self._field_form.addRow(label + ":", widget)
+                self._field_widgets[key] = (field_type, widget)
+            elif field_type == "int_or_none":
+                row = QWidget()
+                row_layout = QHBoxLayout(row)
+                row_layout.setContentsMargins(0, 0, 0, 0)
+
+                enabled = QCheckBox("Enabled")
+                spin = QSpinBox()
+                spin.setRange(-999999, 999999)
+
+                value = cmd.get(key, default)
+                enabled.setChecked(value is not None)
+                spin.setEnabled(value is not None)
+                spin.setValue(0 if value is None else int(value))
+
+                def toggle_optional(state, spinbox=spin):
+                    spinbox.setEnabled(bool(state))
+                    self._on_changed()
+
+                enabled.stateChanged.connect(toggle_optional)
+                spin.valueChanged.connect(self._on_changed)
+
+                row_layout.addWidget(enabled)
+                row_layout.addWidget(spin, 1)
+                self._field_form.addRow(label + ":", row)
+                self._field_widgets[key] = (field_type, enabled, spin)
+
+    def _selected_command(self):
+        if not isinstance(self._data, list):
+            return None
+        row = self._cmd_list.currentRow()
+        if row < 0 or row >= len(self._data):
+            return None
+        return self._data[row]
+
+    def _on_cmd_selected(self, row):
+        self._current_index = row
+        cmd = self._selected_command()
+        self._updating = True
+        if cmd is None:
+            self._build_fields(None, None)
+        else:
+            cmd_type = cmd.get("cmd", "wait")
+            combo_index = self._type_combo.findText(cmd_type)
+            if combo_index >= 0:
+                self._type_combo.setCurrentIndex(combo_index)
+            self._build_fields(cmd_type, cmd)
+        self._updating = False
+
+    def _on_type_changed(self, cmd_type):
+        if self._updating:
+            return
+        cmd = self._selected_command()
+        if cmd is None:
+            return
+
+        new_cmd = {"cmd": cmd_type}
+        for key, _label, _field_type, default in EVENT_CMD_FIELDS.get(cmd_type, []):
+            if default is not None:
+                new_cmd[key] = copy.deepcopy(default)
+
+        cmd.clear()
+        cmd.update(new_cmd)
+        self._refresh_command_list()
+        self._cmd_list.setCurrentRow(self._current_index)
+        self._build_fields(cmd_type, cmd)
+        self._mark_dirty()
+
+    def _on_changed(self):
+        if self._updating:
+            return
+        cmd = self._selected_command()
+        if cmd is None:
+            return
+
+        cmd_type = cmd.get("cmd")
+        updated = {"cmd": cmd_type}
+        for key, _label, field_type, _default in EVENT_CMD_FIELDS.get(cmd_type, []):
+            widget_info = self._field_widgets.get(key)
+            if field_type == "str":
+                updated[key] = widget_info[1].text()
+            elif field_type == "int":
+                updated[key] = widget_info[1].value()
+            elif field_type == "int_or_none":
+                enabled, spin = widget_info[1], widget_info[2]
+                updated[key] = spin.value() if enabled.isChecked() else None
+
+        cmd.clear()
+        cmd.update(updated)
+        self._refresh_command_list()
+        self._cmd_list.setCurrentRow(self._current_index)
+        self._mark_dirty()
+
+    def _on_rows_moved(self, _src_parent, start, end, _dst_parent, row):
+        if self._updating or not isinstance(self._data, list) or start != end:
+            return
+        moved = self._data.pop(start)
+        if row > start:
+            row -= 1
+        self._data.insert(row, moved)
+        self._refresh_command_list()
+        self._cmd_list.setCurrentRow(row)
+        self._mark_dirty()
+
+    def _add_command(self):
+        if not isinstance(self._data, list):
+            return
+        self._data.append({"cmd": "wait", "duration": 60})
+        self._refresh_command_list()
+        self._cmd_list.setCurrentRow(len(self._data) - 1)
+        self._mark_dirty()
+
+    def _delete_command(self):
+        if not isinstance(self._data, list):
+            return
+        row = self._cmd_list.currentRow()
+        if row < 0 or row >= len(self._data):
+            return
+        del self._data[row]
+        self._refresh_command_list()
+        if self._data:
+            self._cmd_list.setCurrentRow(min(row, len(self._data) - 1))
+        else:
+            self._current_index = -1
+            self._build_fields(None, None)
+        self._mark_dirty()
+
+    def _mark_dirty(self):
+        window = self.window()
+        if hasattr(window, "mark_dirty"):
+            window.mark_dirty()
+
+
+def _create_default_map(name="New Map", width=20, height=15, tile_size=16):
+    """空のマップデータを生成する。"""
+    return {
+        "version": 1,
+        "name": name,
+        "width": width,
+        "height": height,
+        "tile_size": tile_size,
+        "tileset": "",
+        "layers": [{
+            "name": "ground",
+            "visible": True,
+            "tiles": [[0 for _ in range(width)] for _ in range(height)],
+        }],
+    }
+
+
+class TilesetPalette(QWidget):
+    """タイルセットを一覧表示する簡易パレット。"""
+
+    tile_selected = Signal(int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumHeight(220)
+        self._tile_size = 16
+        self._tileset_name = ""
+        self._image = QImage()
+        self._selected_tile = 1
+        self._scale = 2
+
+    def load_tileset(self, tileset_name, tile_size):
+        self._tileset_name = tileset_name or ""
+        self._tile_size = max(1, int(tile_size or 16))
+        image_path = os.path.join(TILESET_DIR, self._tileset_name) if self._tileset_name else ""
+        self._image = QImage(image_path) if image_path and os.path.isfile(image_path) else QImage()
+        self.update()
+
+    def set_selected_tile(self, tile_id):
+        self._selected_tile = max(1, int(tile_id))
+        self.update()
+
+    def selected_tile(self):
+        return self._selected_tile
+
+    def mousePressEvent(self, event):
+        if self._image.isNull() or event.button() != Qt.LeftButton:
+            return
+        cols = max(1, self._image.width() // self._tile_size)
+        col = int(event.position().x()) // (self._tile_size * self._scale)
+        row = int(event.position().y()) // (self._tile_size * self._scale)
+        tile_id = row * cols + col + 1
+        if col < 0 or row < 0 or tile_id < 1:
+            return
+        max_tiles = cols * max(1, self._image.height() // self._tile_size)
+        if tile_id > max_tiles:
+            return
+        self._selected_tile = tile_id
+        self.tile_selected.emit(tile_id)
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(40, 40, 40))
+        if self._image.isNull():
+            painter.setPen(QColor(220, 220, 220))
+            painter.drawText(self.rect(), Qt.AlignCenter, "No Tileset")
+            return
+
+        scaled = QPixmap.fromImage(self._image).scaled(
+            self._image.width() * self._scale,
+            self._image.height() * self._scale,
+            Qt.IgnoreAspectRatio,
+            Qt.FastTransformation,
+        )
+        painter.drawPixmap(0, 0, scaled)
+
+        cols = max(1, self._image.width() // self._tile_size)
+        rows = max(1, self._image.height() // self._tile_size)
+        cell = self._tile_size * self._scale
+        painter.setPen(QPen(QColor(90, 90, 90), 1))
+        for x in range(cols + 1):
+            painter.drawLine(x * cell, 0, x * cell, rows * cell)
+        for y in range(rows + 1):
+            painter.drawLine(0, y * cell, cols * cell, y * cell)
+
+        tile_index = self._selected_tile - 1
+        sx = (tile_index % cols) * cell
+        sy = (tile_index // cols) * cell
+        painter.setPen(QPen(QColor(255, 220, 0), 2))
+        painter.drawRect(sx, sy, cell, cell)
+
+    def sizeHint(self):
+        if self._image.isNull():
+            return super().sizeHint()
+        return self._image.size() * self._scale
+
+
+class MapCanvas(QWidget):
+    """単純なマップ描画/ペン編集キャンバス。"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumSize(400, 300)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self._map_data = None
+        self._tileset_name = ""
+        self._tileset_image = QImage()
+        self._selected_tile = 1
+        self._zoom = 2
+        self._painting = False
+        self._tool = "pen"
+        self._erase_mode = False
+        self._active_layer_idx = 0
+        self._drag_start = None
+        self._drag_current = None
+        self._selection_start = None
+        self._selection_end = None
+        self._clipboard_tiles = None
+        self._paste_origin = None
+
+    def set_map_data(self, map_data):
+        self._map_data = map_data
+        self._load_tileset()
+        self.update()
+
+    def set_selected_tile(self, tile_id):
+        self._selected_tile = max(1, int(tile_id))
+
+    def set_active_layer(self, index):
+        self._active_layer_idx = max(0, int(index))
+        self.update()
+
+    def set_tool(self, tool):
+        self._tool = tool
+        self._drag_start = None
+        self._drag_current = None
+        if tool != "select":
+            self._selection_start = None
+            self._selection_end = None
+            self._paste_origin = None
+        self.update()
+
+    def set_erase_mode(self, enabled):
+        self._erase_mode = bool(enabled)
+        self.update()
+
+    def _load_tileset(self):
+        self._tileset_name = self._map_data.get("tileset", "") if self._map_data else ""
+        path = os.path.join(TILESET_DIR, self._tileset_name) if self._tileset_name else ""
+        self._tileset_image = QImage(path) if path and os.path.isfile(path) else QImage()
+
+    def _tile_rect(self, col, row):
+        tile_size = self._map_data.get("tile_size", 16) * self._zoom
+        return QRectF(col * tile_size, row * tile_size, tile_size, tile_size)
+
+    def _tile_at_pos(self, pos):
+        if not self._map_data:
+            return None
+        tile_size = self._map_data.get("tile_size", 16) * self._zoom
+        col = int(pos.x()) // tile_size
+        row = int(pos.y()) // tile_size
+        if 0 <= row < self._map_data.get("height", 0) and 0 <= col < self._map_data.get("width", 0):
+            return row, col
+        return None
+
+    def _paint_tile(self, row, col, tile_value):
+        if not self._map_data:
+            return
+        layers = self._map_data.get("layers", [])
+        if not layers:
+            return
+        layer_idx = min(self._active_layer_idx, len(layers) - 1)
+        tiles = layers[layer_idx]["tiles"]
+        if tiles[row][col] == tile_value:
+            return
+        tiles[row][col] = tile_value
+        window = self.window()
+        if hasattr(window, "mark_dirty"):
+            window.mark_dirty()
+        self.update()
+
+    def _apply_rect(self, start, end, tile_value):
+        if not self._map_data or start is None or end is None:
+            return
+        sr, sc = start
+        er, ec = end
+        top, bottom = sorted((sr, er))
+        left, right = sorted((sc, ec))
+        for row in range(top, bottom + 1):
+            for col in range(left, right + 1):
+                self._paint_tile(row, col, tile_value)
+
+    def _apply_bucket(self, start, tile_value):
+        if not self._map_data or start is None:
+            return
+        layers = self._map_data.get("layers", [])
+        if not layers:
+            return
+        layer_idx = min(self._active_layer_idx, len(layers) - 1)
+        tiles = layers[layer_idx]["tiles"]
+        height = self._map_data.get("height", 0)
+        width = self._map_data.get("width", 0)
+        sr, sc = start
+        target = tiles[sr][sc]
+        if target == tile_value:
+            return
+        queue = [(sr, sc)]
+        visited = set()
+        changes = 0
+        while queue and changes < 10000:
+            row, col = queue.pop()
+            if (row, col) in visited:
+                continue
+            visited.add((row, col))
+            if not (0 <= row < height and 0 <= col < width):
+                continue
+            if tiles[row][col] != target:
+                continue
+            tiles[row][col] = tile_value
+            changes += 1
+            queue.extend([(row - 1, col), (row + 1, col), (row, col - 1), (row, col + 1)])
+        if changes:
+            window = self.window()
+            if hasattr(window, "mark_dirty"):
+                window.mark_dirty()
+            self.update()
+
+    def _selection_bounds(self):
+        if self._selection_start is None or self._selection_end is None:
+            return None
+        sr, sc = self._selection_start
+        er, ec = self._selection_end
+        return min(sr, er), min(sc, ec), max(sr, er), max(sc, ec)
+
+    def _copy_selection(self):
+        bounds = self._selection_bounds()
+        if not self._map_data or bounds is None:
+            return
+        top, left, bottom, right = bounds
+        layers = self._map_data.get("layers", [])
+        if not layers:
+            return
+        layer_idx = min(self._active_layer_idx, len(layers) - 1)
+        tiles = layers[layer_idx]["tiles"]
+        self._clipboard_tiles = [
+            [tiles[row][col] for col in range(left, right + 1)]
+            for row in range(top, bottom + 1)
+        ]
+
+    def _paste_tiles(self, origin):
+        if not self._map_data or not self._clipboard_tiles:
+            return
+        start_row, start_col = origin
+        layers = self._map_data.get("layers", [])
+        if not layers:
+            return
+        layer_idx = min(self._active_layer_idx, len(layers) - 1)
+        tiles = layers[layer_idx]["tiles"]
+        height = self._map_data.get("height", 0)
+        width = self._map_data.get("width", 0)
+        for row_offset, row_tiles in enumerate(self._clipboard_tiles):
+            row = start_row + row_offset
+            if not (0 <= row < height):
+                continue
+            for col_offset, tile_value in enumerate(row_tiles):
+                col = start_col + col_offset
+                if 0 <= col < width:
+                    tiles[row][col] = tile_value
+        window = self.window()
+        if hasattr(window, "mark_dirty"):
+            window.mark_dirty()
+        self.update()
+
+    def _delete_selection(self):
+        bounds = self._selection_bounds()
+        if not self._map_data or bounds is None:
+            return
+        top, left, bottom, right = bounds
+        layers = self._map_data.get("layers", [])
+        if not layers:
+            return
+        layer_idx = min(self._active_layer_idx, len(layers) - 1)
+        tiles = layers[layer_idx]["tiles"]
+        for row in range(top, bottom + 1):
+            for col in range(left, right + 1):
+                tiles[row][col] = 0
+        window = self.window()
+        if hasattr(window, "mark_dirty"):
+            window.mark_dirty()
+        self.update()
+
+    def keyPressEvent(self, event):
+        key = event.key()
+        if key == Qt.Key_B:
+            self.set_tool("pen")
+        elif key == Qt.Key_R:
+            self.set_tool("rect")
+        elif key == Qt.Key_F:
+            self.set_tool("bucket")
+        elif key == Qt.Key_S:
+            self.set_tool("select")
+        elif key == Qt.Key_E:
+            self.set_erase_mode(not self._erase_mode)
+        elif key == Qt.Key_Delete:
+            self._delete_selection()
+        elif event.matches(QKeySequence.Copy):
+            self._copy_selection()
+        elif event.matches(QKeySequence.Paste):
+            if self._clipboard_tiles and self._selection_bounds() is not None:
+                top, left, _bottom, _right = self._selection_bounds()
+                self._paste_origin = (top, left)
+            elif self._clipboard_tiles:
+                self._paste_origin = (0, 0)
+            self.update()
+        elif key == Qt.Key_Escape:
+            if self._paste_origin is not None:
+                self._paste_origin = None
+                self.update()
+        else:
+            super().keyPressEvent(event)
+
+    def mousePressEvent(self, event):
+        pos = self._tile_at_pos(event.position())
+        if pos is None:
+            return
+        self.setFocus()
+        tile_value = 0 if (self._erase_mode or event.button() == Qt.RightButton) else self._selected_tile
+        if self._tool == "bucket" and event.button() in (Qt.LeftButton, Qt.RightButton):
+            self._apply_bucket(pos, tile_value)
+            return
+        if self._tool == "select" and event.button() == Qt.LeftButton:
+            if self._paste_origin is not None and self._clipboard_tiles:
+                self._paste_tiles(pos)
+                self._paste_origin = None
+                self._selection_start = pos
+                rows = len(self._clipboard_tiles)
+                cols = len(self._clipboard_tiles[0]) if rows else 0
+                self._selection_end = (pos[0] + rows - 1, pos[1] + cols - 1)
+                return
+            self._selection_start = pos
+            self._selection_end = pos
+            self.update()
+            return
+        if self._tool == "rect" and event.button() in (Qt.LeftButton, Qt.RightButton):
+            self._drag_start = pos
+            self._drag_current = pos
+            self.update()
+            return
+        self._painting = True
+        row, col = pos
+        self._paint_tile(row, col, tile_value)
+
+    def mouseMoveEvent(self, event):
+        buttons = event.buttons()
+        pos = self._tile_at_pos(event.position())
+        if pos is None:
+            return
+        if self._tool == "select" and self._selection_start is not None:
+            if self._paste_origin is not None and self._clipboard_tiles:
+                self._paste_origin = pos
+                self.update()
+                return
+            self._selection_end = pos
+            self.update()
+            return
+        if self._tool == "rect" and self._drag_start is not None:
+            self._drag_current = pos
+            self.update()
+            return
+        if not self._painting:
+            return
+        row, col = pos
+        tile_value = 0 if (self._erase_mode or (buttons & Qt.RightButton)) else self._selected_tile
+        if self._tool == "pen" and buttons & (Qt.LeftButton | Qt.RightButton):
+            self._paint_tile(row, col, tile_value)
+
+    def mouseReleaseEvent(self, event):
+        if self._tool == "select":
+            self.update()
+            return
+        if self._tool == "rect" and self._drag_start is not None:
+            tile_value = 0 if (self._erase_mode or event.button() == Qt.RightButton) else self._selected_tile
+            self._apply_rect(self._drag_start, self._drag_current, tile_value)
+            self._drag_start = None
+            self._drag_current = None
+            self.update()
+        self._painting = False
+
+    def wheelEvent(self, event):
+        if event.angleDelta().y() > 0:
+            self._zoom = min(8, self._zoom + 1)
+        else:
+            self._zoom = max(1, self._zoom - 1)
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(30, 30, 30))
+        if not self._map_data:
+            painter.setPen(QColor(220, 220, 220))
+            painter.drawText(self.rect(), Qt.AlignCenter, "No Map Selected")
+            return
+
+        width = self._map_data.get("width", 0)
+        height = self._map_data.get("height", 0)
+        tile_size = self._map_data.get("tile_size", 16)
+        draw_size = tile_size * self._zoom
+        cols_in_tileset = max(1, self._tileset_image.width() // tile_size) if not self._tileset_image.isNull() else 1
+
+        for row in range(height):
+            for col in range(width):
+                rect = self._tile_rect(col, row)
+                painter.fillRect(rect, QColor(55, 55, 55))
+                for layer in self._map_data.get("layers", []):
+                    if not layer.get("visible", True):
+                        continue
+                    tiles = layer.get("tiles", [])
+                    if row >= len(tiles) or col >= len(tiles[row]):
+                        continue
+                    tile_id = tiles[row][col]
+                    if tile_id > 0 and not self._tileset_image.isNull():
+                        idx = tile_id - 1
+                        sx = (idx % cols_in_tileset) * tile_size
+                        sy = (idx // cols_in_tileset) * tile_size
+                        src = QRectF(sx, sy, tile_size, tile_size)
+                        painter.drawImage(rect, self._tileset_image, src)
+                painter.setPen(QPen(QColor(80, 80, 80), 1))
+                painter.drawRect(rect)
+
+        if self._drag_start is not None and self._drag_current is not None:
+            sr, sc = self._drag_start
+            er, ec = self._drag_current
+            top, bottom = sorted((sr, er))
+            left, right = sorted((sc, ec))
+            preview = QRectF(
+                left * draw_size,
+                top * draw_size,
+                (right - left + 1) * draw_size,
+                (bottom - top + 1) * draw_size,
+            )
+            painter.fillRect(preview, QColor(255, 255, 0, 50))
+            painter.setPen(QPen(QColor(255, 220, 0), 2))
+            painter.drawRect(preview)
+
+        bounds = self._selection_bounds()
+        if bounds is not None:
+            top, left, bottom, right = bounds
+            selection_rect = QRectF(
+                left * draw_size,
+                top * draw_size,
+                (right - left + 1) * draw_size,
+                (bottom - top + 1) * draw_size,
+            )
+            painter.fillRect(selection_rect, QColor(0, 180, 255, 40))
+            painter.setPen(QPen(QColor(0, 200, 255), 2, Qt.DashLine))
+            painter.drawRect(selection_rect)
+
+        if self._paste_origin is not None and self._clipboard_tiles:
+            start_row, start_col = self._paste_origin
+            rows = len(self._clipboard_tiles)
+            cols = len(self._clipboard_tiles[0]) if rows else 0
+            paste_rect = QRectF(
+                start_col * draw_size,
+                start_row * draw_size,
+                cols * draw_size,
+                rows * draw_size,
+            )
+            painter.fillRect(paste_rect, QColor(0, 255, 120, 40))
+            painter.setPen(QPen(QColor(0, 255, 120), 2, Qt.DashLine))
+            painter.drawRect(paste_rect)
+            if not self._tileset_image.isNull() and rows and cols:
+                tile_size = self._map_data.get("tile_size", 16)
+                cols_in_tileset = max(1, self._tileset_image.width() // tile_size)
+                for row_offset, row_tiles in enumerate(self._clipboard_tiles):
+                    for col_offset, tile_id in enumerate(row_tiles):
+                        if tile_id <= 0:
+                            continue
+                        idx = tile_id - 1
+                        sx = (idx % cols_in_tileset) * tile_size
+                        sy = (idx // cols_in_tileset) * tile_size
+                        src = QRectF(sx, sy, tile_size, tile_size)
+                        dest = QRectF(
+                            (start_col + col_offset) * draw_size,
+                            (start_row + row_offset) * draw_size,
+                            draw_size,
+                            draw_size,
+                        )
+                        painter.setOpacity(0.7)
+                        painter.drawImage(dest, self._tileset_image, src)
+                        painter.setOpacity(1.0)
+
+        painter.setPen(QColor(230, 230, 230))
+        painter.drawText(
+            8, 16,
+            f"Tool: {self._tool} {'(eraser)' if self._erase_mode else ''} Layer: {self._active_layer_idx}"
+        )
+
+        self.resize(width * draw_size + 2, height * draw_size + 2)
+
+
+class MapPropertyPanel(QWidget):
+    """マップ基本プロパティ。"""
+
+    changed = Signal()
+    tileset_changed = Signal(str)
+    tool_changed = Signal(str)
+    erase_mode_changed = Signal(bool)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._data = None
+        self._updating = False
+
+        layout = QFormLayout(self)
+        self._name_edit = QLineEdit()
+        self._name_edit.textChanged.connect(self._on_changed)
+        layout.addRow("Name:", self._name_edit)
+
+        self._width_spin = QSpinBox()
+        self._width_spin.setRange(1, 999)
+        self._width_spin.valueChanged.connect(self._on_changed)
+        layout.addRow("Width:", self._width_spin)
+
+        self._height_spin = QSpinBox()
+        self._height_spin.setRange(1, 999)
+        self._height_spin.valueChanged.connect(self._on_changed)
+        layout.addRow("Height:", self._height_spin)
+
+        self._tile_size_spin = QSpinBox()
+        self._tile_size_spin.setRange(1, 128)
+        self._tile_size_spin.valueChanged.connect(self._on_changed)
+        layout.addRow("Tile Size:", self._tile_size_spin)
+
+        self._tileset_combo = QComboBox()
+        self._reload_tilesets()
+        self._tileset_combo.currentTextChanged.connect(self._on_tileset_changed)
+        layout.addRow("Tileset:", self._tileset_combo)
+
+        self._tool_combo = QComboBox()
+        self._tool_combo.addItems(["pen", "rect", "bucket", "select"])
+        self._tool_combo.currentTextChanged.connect(self.tool_changed.emit)
+        layout.addRow("Tool:", self._tool_combo)
+
+        self._erase_check = QCheckBox("Eraser Mode (E)")
+        self._erase_check.toggled.connect(self.erase_mode_changed.emit)
+        layout.addRow("", self._erase_check)
+
+    def _reload_tilesets(self):
+        self._tileset_combo.clear()
+        self._tileset_combo.addItem("")
+        if os.path.isdir(TILESET_DIR):
+            for fname in sorted(os.listdir(TILESET_DIR)):
+                if fname.lower().endswith(".png"):
+                    self._tileset_combo.addItem(fname)
+
+    def set_data(self, map_data):
+        self._data = map_data
+        self._updating = True
+        self._reload_tilesets()
+        self._name_edit.setText(map_data.get("name", ""))
+        self._width_spin.setValue(int(map_data.get("width", 20)))
+        self._height_spin.setValue(int(map_data.get("height", 15)))
+        self._tile_size_spin.setValue(int(map_data.get("tile_size", 16)))
+        tileset_name = map_data.get("tileset", "")
+        if tileset_name and self._tileset_combo.findText(tileset_name) < 0:
+            self._tileset_combo.addItem(tileset_name)
+        self._tileset_combo.setCurrentText(tileset_name)
+        self._updating = False
+
+    def _on_tileset_changed(self, value):
+        if self._updating or not self._data:
+            return
+        self._data["tileset"] = value
+        self.tileset_changed.emit(value)
+        self.changed.emit()
+
+    def _on_changed(self):
+        if self._updating or not self._data:
+            return
+        self._data["name"] = self._name_edit.text()
+        self._data["width"] = self._width_spin.value()
+        self._data["height"] = self._height_spin.value()
+        self._data["tile_size"] = self._tile_size_spin.value()
+        self.changed.emit()
+
+
+class LayerPanel(QWidget):
+    """マップレイヤーの簡易操作パネル。"""
+
+    active_layer_changed = Signal(int)
+    layers_changed = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._data = None
+        self._updating = False
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self._list = QListWidget()
+        self._list.currentRowChanged.connect(self._on_current_row_changed)
+        layout.addWidget(self._list)
+
+        buttons = QHBoxLayout()
+        self._btn_add = QPushButton("+")
+        self._btn_add.clicked.connect(self._add_layer)
+        buttons.addWidget(self._btn_add)
+        self._btn_del = QPushButton("-")
+        self._btn_del.clicked.connect(self._delete_layer)
+        buttons.addWidget(self._btn_del)
+        self._btn_toggle = QPushButton("Toggle")
+        self._btn_toggle.clicked.connect(self._toggle_visible)
+        buttons.addWidget(self._btn_toggle)
+        layout.addLayout(buttons)
+
+    def set_data(self, map_data):
+        self._data = map_data
+        self._updating = True
+        self._list.clear()
+        for layer in map_data.get("layers", []):
+            status = "[x]" if layer.get("visible", True) else "[ ]"
+            self._list.addItem(f"{status} {layer.get('name', 'layer')}")
+        if self._list.count():
+            self._list.setCurrentRow(0)
+        self._updating = False
+
+    def set_active_layer(self, index):
+        if 0 <= index < self._list.count():
+            self._updating = True
+            self._list.setCurrentRow(index)
+            self._updating = False
+
+    def _refresh(self):
+        if self._data is not None:
+            current = self._list.currentRow()
+            self.set_data(self._data)
+            if 0 <= current < self._list.count():
+                self.set_active_layer(current)
+
+    def _on_current_row_changed(self, row):
+        if self._updating or row < 0:
+            return
+        self.active_layer_changed.emit(row)
+
+    def _add_layer(self):
+        if not self._data:
+            return
+        width = self._data.get("width", 1)
+        height = self._data.get("height", 1)
+        layers = self._data.setdefault("layers", [])
+        layers.append({
+            "name": f"layer_{len(layers)}",
+            "visible": True,
+            "tiles": [[0 for _ in range(width)] for _ in range(height)],
+        })
+        self._refresh()
+        self.set_active_layer(len(layers) - 1)
+        self.layers_changed.emit()
+
+    def _delete_layer(self):
+        if not self._data:
+            return
+        layers = self._data.setdefault("layers", [])
+        row = self._list.currentRow()
+        if len(layers) <= 1 or row < 0:
+            return
+        del layers[row]
+        self._refresh()
+        self.set_active_layer(max(0, min(row, len(layers) - 1)))
+        self.layers_changed.emit()
+
+    def _toggle_visible(self):
+        if not self._data:
+            return
+        row = self._list.currentRow()
+        layers = self._data.setdefault("layers", [])
+        if not (0 <= row < len(layers)):
+            return
+        layers[row]["visible"] = not layers[row].get("visible", True)
+        self._refresh()
+        self.set_active_layer(row)
+        self.layers_changed.emit()
+
+
+class MapSidePanel(QWidget):
+    """TilesetPalette と MapPropertyPanel のコンテナ。"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.addWidget(QLabel("Tileset Palette"))
+        self._palette = TilesetPalette()
+        layout.addWidget(self._palette, 1)
+        layout.addWidget(QLabel("Layers"))
+        self._layers = LayerPanel()
+        layout.addWidget(self._layers)
+        layout.addWidget(QLabel("Map Properties"))
+        self._properties = MapPropertyPanel()
+        layout.addWidget(self._properties)
+
+
+class CharacterEditor(QScrollArea):
+    """Characters 編集フォーム。"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._data = None
+        self._updating = False
+        self._sprite_files = self._list_sprite_files()
+        self._graphic_widgets = {}
+        self._base_stat_spins = {}
+        self._growth_stat_spins = {}
+        self._physical_skill_spins = {}
+        self._magic_skill_spins = {}
+
+        container = QWidget()
+        self.setWidget(container)
+        self.setWidgetResizable(True)
+
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(8, 8, 8, 8)
+
+        basic_group = QGroupBox("Basic")
+        basic_form = QFormLayout(basic_group)
+        self._name_edit = QLineEdit()
+        self._name_edit.textChanged.connect(self._on_changed)
+        basic_form.addRow("Name:", self._name_edit)
+        self._job_spin = QSpinBox()
+        self._job_spin.setRange(0, 9999)
+        self._job_spin.valueChanged.connect(self._on_changed)
+        basic_form.addRow("Initial Job ID:", self._job_spin)
+        self._personality_spin = QSpinBox()
+        self._personality_spin.setRange(0, 9999)
+        self._personality_spin.valueChanged.connect(self._on_changed)
+        basic_form.addRow("Personality ID:", self._personality_spin)
+        layout.addWidget(basic_group)
+
+        graphic_group = QGroupBox("Graphics")
+        graphic_layout = QVBoxLayout(graphic_group)
+        for graphic_type, label in (("face", "Face"), ("walk", "Walk"), ("battle", "Battle")):
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.addWidget(QLabel(label + ":"))
+            combo = QComboBox()
+            combo.addItem("")
+            combo.addItems(self._sprite_files)
+            combo.currentTextChanged.connect(self._on_changed)
+            row_layout.addWidget(combo, 1)
+            spin = QSpinBox()
+            spin.setRange(0, 9999)
+            spin.valueChanged.connect(self._on_changed)
+            row_layout.addWidget(QLabel("Selection ID:"))
+            row_layout.addWidget(spin)
+            preview = QLabel("No Image")
+            preview.setFixedSize(48, 48)
+            preview.setAlignment(Qt.AlignCenter)
+            preview.setStyleSheet("border: 1px solid #666; background: #222;")
+            row_layout.addWidget(preview)
+            graphic_layout.addWidget(row)
+            self._graphic_widgets[graphic_type] = {
+                "combo": combo,
+                "spin": spin,
+                "preview": preview,
+            }
+        layout.addWidget(graphic_group)
+
+        base_group = QGroupBox("Base Stats")
+        base_form = QFormLayout(base_group)
+        for key in STAT_KEYS:
+            spin = QSpinBox()
+            spin.setRange(0, 999999)
+            spin.valueChanged.connect(self._on_changed)
+            base_form.addRow(STAT_LABELS[key] + ":", spin)
+            self._base_stat_spins[key] = spin
+        layout.addWidget(base_group)
+
+        growth_stat_group = QGroupBox("Growth Rates - Stats")
+        growth_stat_form = QFormLayout(growth_stat_group)
+        for key in STAT_KEYS:
+            spin = QSpinBox()
+            spin.setRange(0, 999999)
+            spin.valueChanged.connect(self._on_changed)
+            growth_stat_form.addRow(STAT_LABELS[key] + ":", spin)
+            self._growth_stat_spins[key] = spin
+        layout.addWidget(growth_stat_group)
+
+        physical_group = QGroupBox("Growth Rates - Physical Skills")
+        physical_form = QFormLayout(physical_group)
+        for key in PHYSICAL_SKILL_KEYS:
+            spin = QSpinBox()
+            spin.setRange(0, 999999)
+            spin.valueChanged.connect(self._on_changed)
+            physical_form.addRow(PHYSICAL_SKILL_LABELS[key] + ":", spin)
+            self._physical_skill_spins[key] = spin
+        layout.addWidget(physical_group)
+
+        magic_group = QGroupBox("Growth Rates - Magic Skills")
+        magic_form = QFormLayout(magic_group)
+        for key in MAGIC_SKILL_KEYS:
+            spin = QSpinBox()
+            spin.setRange(0, 999999)
+            spin.valueChanged.connect(self._on_changed)
+            magic_form.addRow(MAGIC_SKILL_LABELS[key] + ":", spin)
+            self._magic_skill_spins[key] = spin
+        layout.addWidget(magic_group)
+        layout.addStretch()
+
+    def _list_sprite_files(self):
+        if not os.path.isdir(SPRITE_DIR):
+            return []
+        return sorted(
+            fname for fname in os.listdir(SPRITE_DIR)
+            if os.path.isfile(os.path.join(SPRITE_DIR, fname))
+            and fname.lower().endswith((".png", ".jpg", ".jpeg", ".bmp"))
+        )
+
+    def set_data(self, char_data):
+        self._data = char_data
+        self._updating = True
+
+        self._name_edit.setText(char_data.get("name", ""))
+        self._job_spin.setValue(int(char_data.get("initial_job", 0)))
+        self._personality_spin.setValue(int(char_data.get("personality", 0)))
+
+        graphics = char_data.get("graphics", {})
+        for graphic_type, widgets in self._graphic_widgets.items():
+            gdata = graphics.get(graphic_type, {})
+            combo = widgets["combo"]
+            image_name = gdata.get("image", "")
+            if image_name and combo.findText(image_name) < 0:
+                combo.addItem(image_name)
+            combo.setCurrentText(image_name)
+            widgets["spin"].setValue(int(gdata.get("selection_id", 0)))
+            self._update_graphic_preview(graphic_type)
+
+        base_stats = char_data.get("base_stats", {})
+        for key, spin in self._base_stat_spins.items():
+            spin.setValue(int(base_stats.get(key, 0)))
+
+        growth = char_data.get("growth_rates", {})
+        growth_stats = growth.get("stats", {})
+        for key, spin in self._growth_stat_spins.items():
+            spin.setValue(int(growth_stats.get(key, 0)))
+
+        physical = growth.get("physical_skills", {})
+        for key, spin in self._physical_skill_spins.items():
+            spin.setValue(int(physical.get(key, 0)))
+
+        magic = growth.get("magic_skills", {})
+        for key, spin in self._magic_skill_spins.items():
+            spin.setValue(int(magic.get(key, 0)))
+
+        self._updating = False
+
+    def _update_graphic_preview(self, graphic_type):
+        widgets = self._graphic_widgets[graphic_type]
+        image_name = widgets["combo"].currentText().strip()
+        preview = widgets["preview"]
+        if not image_name:
+            preview.setText("No Image")
+            preview.setPixmap(QPixmap())
+            return
+
+        image_path = os.path.join(SPRITE_DIR, image_name)
+        image = QImage(image_path)
+        if image.isNull():
+            preview.setText("Load Error")
+            preview.setPixmap(QPixmap())
+            return
+
+        selection_id = widgets["spin"].value()
+        cols = max(1, image.width() // GRAPHIC_CUT_SIZE)
+        x = (selection_id % cols) * GRAPHIC_CUT_SIZE
+        y = (selection_id // cols) * GRAPHIC_CUT_SIZE
+        if x + GRAPHIC_CUT_SIZE > image.width() or y + GRAPHIC_CUT_SIZE > image.height():
+            x = 0
+            y = 0
+        cropped = image.copy(x, y, GRAPHIC_CUT_SIZE, GRAPHIC_CUT_SIZE)
+        pixmap = QPixmap.fromImage(cropped).scaled(
+            preview.width(),
+            preview.height(),
+            Qt.KeepAspectRatio,
+            Qt.FastTransformation,
+        )
+        preview.setText("")
+        preview.setPixmap(pixmap)
+
+    def _on_changed(self):
+        if self._updating or not self._data:
+            return
+
+        self._data["name"] = self._name_edit.text()
+        self._data["initial_job"] = self._job_spin.value()
+        self._data["personality"] = self._personality_spin.value()
+
+        graphics = self._data.setdefault("graphics", {})
+        for graphic_type, widgets in self._graphic_widgets.items():
+            graphics[graphic_type] = {
+                "image": widgets["combo"].currentText().strip(),
+                "selection_id": widgets["spin"].value(),
+            }
+            self._update_graphic_preview(graphic_type)
+
+        base_stats = self._data.setdefault("base_stats", {})
+        for key, spin in self._base_stat_spins.items():
+            base_stats[key] = spin.value()
+
+        growth = self._data.setdefault("growth_rates", {})
+        stats = growth.setdefault("stats", {})
+        for key, spin in self._growth_stat_spins.items():
+            stats[key] = spin.value()
+
+        physical = growth.setdefault("physical_skills", {})
+        for key, spin in self._physical_skill_spins.items():
+            physical[key] = spin.value()
+
+        magic = growth.setdefault("magic_skills", {})
+        for key, spin in self._magic_skill_spins.items():
+            magic[key] = spin.value()
+
+        window = self.window()
+        if hasattr(window, "mark_dirty"):
+            window.mark_dirty()
+
+
 class EditorWindow(QMainWindow):
     """メインウィンドウ。"""
 
@@ -846,6 +2129,11 @@ class EditorWindow(QMainWindow):
         self.resize(1300, 700)
 
         self._file_data = {}  # { filepath: data }
+        self._mode = "text"  # "text" | "map" | "character"
+        self._map_file_data = {}
+        self._current_map_path = None
+        self._map_snapshot = None
+        self._char_file_data = {}
         self._dirty = False
         self._current_entry = None  # (filepath, category, entry_id)
         self._undo_stack = QUndoStack(self)
@@ -901,8 +2189,8 @@ class EditorWindow(QMainWindow):
         self._search_index = -1
 
         # メインスプリッター (3ペイン)
-        splitter = QSplitter(Qt.Horizontal)
-        main_layout.addWidget(splitter)
+        self._splitter = QSplitter(Qt.Horizontal)
+        main_layout.addWidget(self._splitter)
         self.setCentralWidget(main_widget)
 
         # 左: ファイルツリー
@@ -910,7 +2198,7 @@ class EditorWindow(QMainWindow):
         self._tree.currentItemChanged.connect(self._on_tree_selected)
         self._tree.rename_requested.connect(self._on_rename_requested)
         self._tree.setMinimumWidth(180)
-        splitter.addWidget(self._tree)
+        self._splitter.addWidget(self._tree)
 
         # 中央: 編集エリア（スタックウィジェット）
         center = QWidget()
@@ -940,14 +2228,37 @@ class EditorWindow(QMainWindow):
         self._telop_editor = TelopEditor()
         self._stack.addWidget(self._telop_editor)
 
+        # Events 編集
+        self._event_editor = EventEditor()
+        self._stack.addWidget(self._event_editor)
+
+        # Characters 編集
+        self._char_editor = CharacterEditor()
+        self._stack.addWidget(self._char_editor)
+
         center_layout.addWidget(self._stack)
-        splitter.addWidget(center)
+        self._splitter.addWidget(center)
 
         # 右: プレビューパネル
         self._preview = PreviewPanel()
-        splitter.addWidget(self._preview)
+        self._splitter.addWidget(self._preview)
 
-        splitter.setSizes([200, 500, 400])
+        self._map_canvas = MapCanvas()
+        self._map_canvas.hide()
+        self._splitter.addWidget(self._map_canvas)
+
+        self._map_side_panel = MapSidePanel()
+        self._map_side_panel.hide()
+        self._map_side_panel._palette.tile_selected.connect(self._map_canvas.set_selected_tile)
+        self._map_side_panel._layers.active_layer_changed.connect(self._map_canvas.set_active_layer)
+        self._map_side_panel._layers.layers_changed.connect(self._on_map_layers_changed)
+        self._map_side_panel._properties.changed.connect(self._on_map_property_changed)
+        self._map_side_panel._properties.tileset_changed.connect(self._on_map_tileset_changed)
+        self._map_side_panel._properties.tool_changed.connect(self._map_canvas.set_tool)
+        self._map_side_panel._properties.erase_mode_changed.connect(self._map_canvas.set_erase_mode)
+        self._splitter.addWidget(self._map_side_panel)
+
+        self._splitter.setSizes([200, 500, 400, 0, 0])
 
         # ステータスバー
         self._statusbar = QStatusBar()
@@ -961,8 +2272,14 @@ class EditorWindow(QMainWindow):
 
         save_action = QAction("Save", self)
         save_action.setShortcut(QKeySequence("Ctrl+S"))
-        save_action.triggered.connect(self._save_all)
+        save_action.triggered.connect(self._save_current)
         file_menu.addAction(save_action)
+
+        file_menu.addSeparator()
+
+        self._new_char_file_action = QAction("New Character File...", self)
+        self._new_char_file_action.triggered.connect(self._new_char_file)
+        file_menu.addAction(self._new_char_file_action)
 
         file_menu.addSeparator()
 
@@ -990,6 +2307,32 @@ class EditorWindow(QMainWindow):
         unused_action.triggered.connect(self._find_unused_ids)
         tools_menu.addAction(unused_action)
 
+        mode_menu = menubar.addMenu("Mode")
+        self._mode_group = QActionGroup(self)
+        self._mode_group.setExclusive(True)
+
+        self._text_mode_action = QAction("Text Editor", self, checkable=True)
+        self._text_mode_action.setChecked(True)
+        self._text_mode_action.triggered.connect(
+            lambda checked: checked and self._switch_mode("text")
+        )
+        self._mode_group.addAction(self._text_mode_action)
+        mode_menu.addAction(self._text_mode_action)
+
+        self._map_mode_action = QAction("Map Editor", self, checkable=True)
+        self._map_mode_action.triggered.connect(
+            lambda checked: checked and self._switch_mode("map")
+        )
+        self._mode_group.addAction(self._map_mode_action)
+        mode_menu.addAction(self._map_mode_action)
+
+        self._character_mode_action = QAction("Character Editor", self, checkable=True)
+        self._character_mode_action.triggered.connect(
+            lambda checked: checked and self._switch_mode("character")
+        )
+        self._mode_group.addAction(self._character_mode_action)
+        mode_menu.addAction(self._character_mode_action)
+
         # Edit メニュー
         edit_menu = menubar.addMenu("Edit")
 
@@ -1006,6 +2349,10 @@ class EditorWindow(QMainWindow):
         add_id_action = QAction("Add ID...", self)
         add_id_action.triggered.connect(self._add_id)
         edit_menu.addAction(add_id_action)
+
+        self._new_map_action = QAction("New Map...", self)
+        self._new_map_action.triggered.connect(self._new_map)
+        edit_menu.addAction(self._new_map_action)
 
         rename_id_action = QAction("Rename ID... (F2)", self)
         rename_id_action.setShortcut(QKeySequence("F2"))
@@ -1049,14 +2396,26 @@ class EditorWindow(QMainWindow):
             f"Loaded {len(self._file_data)} file(s)", 3000)
 
     def _reload_files(self):
-        self._load_all_files()
+        if self._mode == "map":
+            self._load_map_files()
+        elif self._mode == "character":
+            self._load_char_files()
+        else:
+            self._load_all_files()
         self._undo_stack.clear()
         self._snapshot = None
+        self._map_snapshot = None
         self._current_entry = None
         self._stack.setCurrentWidget(self._empty_page)
         self._id_label.setText("Select an item from the tree")
 
     def _on_tree_selected(self, current, previous):
+        if self._mode == "map":
+            self._on_map_tree_selected(current, previous)
+            return
+        if self._mode == "character":
+            self._on_char_tree_selected(current, previous)
+            return
         if not current:
             return
         info = current.data(0, Qt.UserRole)
@@ -1089,23 +2448,46 @@ class EditorWindow(QMainWindow):
         elif cat == "telops":
             self._telop_editor.set_data(entry_data)
             self._stack.setCurrentWidget(self._telop_editor)
+        elif cat == "events":
+            self._event_editor.set_data(entry_data)
+            self._stack.setCurrentWidget(self._event_editor)
 
         self._update_preview()
 
     def _flush_undo(self):
         """現在のエントリへの変更が未コミットなら UndoStack に push する。"""
+        if self._mode == "map":
+            if not self._current_map_path or self._map_snapshot is None:
+                return
+            if self._current_map_path not in self._map_file_data:
+                return
+            current_copy = copy.deepcopy(self._map_file_data[self._current_map_path])
+            if current_copy != self._map_snapshot:
+                cmd = MapEditCommand(
+                    self._map_file_data,
+                    self._current_map_path,
+                    self._map_snapshot,
+                    current_copy,
+                    f"Edit map {os.path.basename(self._current_map_path)}",
+                )
+                self._pushing_undo = True
+                self._undo_stack.push(cmd)
+                self._pushing_undo = False
+                self._map_snapshot = copy.deepcopy(current_copy)
+            return
         if not self._current_entry or self._snapshot is None:
             return
         filepath, cat, entry_id = self._current_entry
-        if filepath not in self._file_data:
+        store = self._get_store(cat)
+        if filepath not in store:
             return
-        current_data = self._file_data[filepath][cat].get(entry_id)
+        current_data = store[filepath][cat].get(entry_id)
         if current_data is None:
             return
         current_copy = copy.deepcopy(current_data)
         if current_copy != self._snapshot:
             cmd = EditCommand(
-                self._file_data, filepath, cat, entry_id,
+                store, filepath, cat, entry_id,
                 self._snapshot, current_copy,
                 f"Edit {cat}.{entry_id}",
             )
@@ -1117,7 +2499,8 @@ class EditorWindow(QMainWindow):
     def mark_dirty(self):
         self._dirty = True
         self._update_title()
-        self._update_preview()
+        if self._mode == "text":
+            self._update_preview()
         # 変更をデバウンスして UndoStack に push
         if not hasattr(self, "_undo_timer"):
             self._undo_timer = QTimer(self)
@@ -1128,7 +2511,411 @@ class EditorWindow(QMainWindow):
 
     def _update_title(self):
         marker = " *" if self._dirty else ""
-        self.setWindowTitle(f"Text Editor{marker}")
+        mode_title = {
+            "text": "Text Editor",
+            "map": "Map Editor",
+            "character": "Character Editor",
+        }.get(self._mode, "Editor")
+        self.setWindowTitle(f"{mode_title}{marker}")
+
+    def _get_store(self, category=None):
+        if category == "characters" or self._mode == "character":
+            return self._char_file_data
+        return self._file_data
+
+    def _save_current(self):
+        """現在のモードに応じた保存処理。"""
+        if self._mode == "text":
+            self._save_all()
+        elif self._mode == "map":
+            self._save_map()
+        elif self._mode == "character":
+            self._save_char_files()
+
+    def _save_map(self):
+        """現在のマップを保存する。"""
+        if not self._current_map_path or self._current_map_path not in self._map_file_data:
+            self._statusbar.showMessage("No map selected", 3000)
+            return
+        self._flush_undo()
+        try:
+            with open(self._current_map_path, "w", encoding="utf-8") as f:
+                json.dump(self._map_file_data[self._current_map_path], f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            self._statusbar.showMessage(f"Save error: {e}", 5000)
+            return
+        self._dirty = False
+        self._update_title()
+        self._undo_stack.setClean()
+        self._statusbar.showMessage(f"Saved map: {os.path.basename(self._current_map_path)}", 3000)
+
+    def _save_char_files(self):
+        """キャラクターファイルを保存する。"""
+        self._flush_undo()
+        os.makedirs(CHAR_DIR, exist_ok=True)
+
+        for filepath, data in self._char_file_data.items():
+            try:
+                with open(filepath, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                self._statusbar.showMessage(f"Save error: {e}", 5000)
+                return
+
+        self._dirty = False
+        self._update_title()
+        self._undo_stack.setClean()
+        self._statusbar.showMessage(
+            f"Saved {len(self._char_file_data)} character file(s)", 3000)
+
+    def _switch_mode(self, mode):
+        """編集モードを切り替える。"""
+        if mode == self._mode:
+            return
+
+        if mode == "text":
+            self._mode = "text"
+            self._tree.setHeaderLabel("Text Files")
+            self._load_all_files()
+            self._stack.setCurrentWidget(self._empty_page)
+            self._map_canvas.hide()
+            self._map_side_panel.hide()
+            self._preview.show()
+            self._preview.clear_preview()
+            self._current_entry = None
+            self._snapshot = None
+            self._map_snapshot = None
+            self._text_mode_action.setChecked(True)
+            self._update_title()
+            self._splitter.setSizes([200, 500, 400, 0, 0])
+            self._statusbar.showMessage("Switched to Text Editor", 2000)
+            return
+
+        if mode == "character":
+            self._mode = "character"
+            self._character_mode_action.setChecked(True)
+            self._load_char_files()
+            self._stack.setCurrentWidget(self._empty_page)
+            self._map_canvas.hide()
+            self._map_side_panel.hide()
+            self._preview.clear_preview()
+            self._preview.hide()
+            self._current_entry = None
+            self._snapshot = None
+            self._map_snapshot = None
+            self._update_title()
+            self._splitter.setSizes([220, 700, 0, 0, 0])
+            self._statusbar.showMessage("Switched to Character Editor", 2000)
+            return
+
+        if mode == "map":
+            self._mode = "map"
+            self._map_mode_action.setChecked(True)
+            self._load_map_files()
+            self._stack.setCurrentWidget(self._empty_page)
+            self._preview.clear_preview()
+            self._preview.hide()
+            self._map_canvas.show()
+            self._map_side_panel.show()
+            self._current_entry = None
+            self._snapshot = None
+            self._map_snapshot = None
+            self._update_title()
+            self._splitter.setSizes([220, 0, 0, 700, 280])
+            self._statusbar.showMessage("Switched to Map Editor", 2000)
+            return
+
+        target_name = "Map Editor" if mode == "map" else "Character Editor"
+        QMessageBox.information(
+            self,
+            "Not Implemented",
+            f"{target_name} is not implemented yet.",
+        )
+        self._mode = "text"
+        self._tree.setHeaderLabel("Text Files")
+        self._load_all_files()
+        self._stack.setCurrentWidget(self._empty_page)
+        self._preview.show()
+        self._preview.clear_preview()
+        self._current_entry = None
+        self._snapshot = None
+        self._map_snapshot = None
+        self._text_mode_action.setChecked(True)
+        self._update_title()
+
+    def _load_char_files(self):
+        """data/characters/ 内の全JSONを読み込む。"""
+        self._char_file_data.clear()
+        os.makedirs(CHAR_DIR, exist_ok=True)
+
+        for fname in sorted(os.listdir(CHAR_DIR)):
+            if not fname.endswith(".json"):
+                continue
+            fpath = os.path.join(CHAR_DIR, fname)
+            try:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if "characters" not in data:
+                    data["characters"] = {}
+                self._char_file_data[fpath] = data
+            except Exception as e:
+                self._statusbar.showMessage(f"Load error: {fname}: {e}", 5000)
+
+        self._build_char_tree()
+        self._statusbar.showMessage(
+            f"Loaded {len(self._char_file_data)} character file(s)", 3000)
+
+    def _load_map_files(self):
+        """data/maps/ 内の全JSONを読み込む。"""
+        self._map_file_data.clear()
+        os.makedirs(MAP_DIR, exist_ok=True)
+        for fname in sorted(os.listdir(MAP_DIR)):
+            if not fname.endswith(".json"):
+                continue
+            fpath = os.path.join(MAP_DIR, fname)
+            try:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    self._map_file_data[fpath] = json.load(f)
+            except Exception as e:
+                self._statusbar.showMessage(f"Load error: {fname}: {e}", 5000)
+        self._build_map_tree()
+        self._statusbar.showMessage(f"Loaded {len(self._map_file_data)} map file(s)", 3000)
+
+    def _build_map_tree(self):
+        self._tree.clear()
+        self._tree.setHeaderLabel("Map Files")
+        for filepath, data in sorted(self._map_file_data.items()):
+            label = data.get("name") or os.path.basename(filepath)
+            item = QTreeWidgetItem(self._tree, [label])
+            item.setData(0, Qt.UserRole, {
+                "type": "map_entry",
+                "path": filepath,
+            })
+
+    def _on_map_tree_selected(self, current, previous):
+        if not current:
+            return
+        info = current.data(0, Qt.UserRole)
+        if not info or info.get("type") != "map_entry":
+            self._current_map_path = None
+            self._map_snapshot = None
+            self._id_label.setText("Select a map to edit")
+            self._map_canvas.set_map_data(None)
+            return
+        filepath = info["path"]
+        self._flush_undo()
+        self._current_map_path = filepath
+        map_data = self._map_file_data[filepath]
+        self._map_snapshot = copy.deepcopy(map_data)
+        self._id_label.setText(f"Map > {map_data.get('name', os.path.basename(filepath))}")
+        self._map_canvas.set_map_data(map_data)
+        self._map_canvas.set_active_layer(0)
+        self._map_side_panel._layers.set_data(map_data)
+        self._map_side_panel._layers.set_active_layer(0)
+        self._map_side_panel._properties.set_data(map_data)
+        self._map_side_panel._palette.load_tileset(map_data.get("tileset", ""), map_data.get("tile_size", 16))
+
+    def _on_map_property_changed(self):
+        if self._mode != "map" or not self._current_map_path:
+            return
+        map_data = self._map_file_data[self._current_map_path]
+        width = map_data.get("width", 1)
+        height = map_data.get("height", 1)
+        for layer in map_data.get("layers", []):
+            old_tiles = layer.get("tiles", [])
+            resized = []
+            for row in range(height):
+                src_row = old_tiles[row] if row < len(old_tiles) else []
+                resized.append((src_row + [0] * width)[:width])
+            layer["tiles"] = resized
+        self._map_canvas.set_map_data(map_data)
+        self._map_side_panel._layers.set_data(map_data)
+        self.mark_dirty()
+
+    def _on_map_tileset_changed(self, tileset_name):
+        if self._mode != "map" or not self._current_map_path:
+            return
+        map_data = self._map_file_data[self._current_map_path]
+        map_data["tileset"] = tileset_name
+        self._map_canvas.set_map_data(map_data)
+        self._map_side_panel._palette.load_tileset(tileset_name, map_data.get("tile_size", 16))
+        self.mark_dirty()
+
+    def _on_map_layers_changed(self):
+        if self._mode != "map" or not self._current_map_path:
+            return
+        map_data = self._map_file_data[self._current_map_path]
+        active = self._map_side_panel._layers._list.currentRow()
+        self._map_canvas.set_map_data(map_data)
+        self._map_canvas.set_active_layer(max(0, active))
+        self.mark_dirty()
+
+    def _new_map(self):
+        if self._mode != "map":
+            self._statusbar.showMessage("Switch to Map Editor first", 3000)
+            return
+        map_name, ok = QInputDialog.getText(self, "New Map", "Map name:")
+        if not ok or not map_name.strip():
+            return
+        map_name = map_name.strip()
+        safe_name = "".join(ch if ch.isalnum() or ch in ("_", "-") else "_" for ch in map_name)
+        filepath = os.path.join(MAP_DIR, f"{safe_name or 'new_map'}.json")
+        if filepath in self._map_file_data or os.path.exists(filepath):
+            QMessageBox.warning(self, "Error", f"Map '{os.path.basename(filepath)}' already exists")
+            return
+        self._map_file_data[filepath] = _create_default_map(map_name)
+        self._build_map_tree()
+        self.mark_dirty()
+        for i in range(self._tree.topLevelItemCount()):
+            item = self._tree.topLevelItem(i)
+            info = item.data(0, Qt.UserRole)
+            if info and info.get("path") == filepath:
+                self._tree.setCurrentItem(item)
+                self._on_map_tree_selected(item, None)
+                break
+
+    def _build_char_tree(self):
+        self._tree.clear()
+        self._tree.setHeaderLabel("Character Files")
+        for filepath, data in sorted(self._char_file_data.items()):
+            filename = os.path.basename(filepath)
+            file_item = QTreeWidgetItem(self._tree, [filename])
+            file_item.setData(0, Qt.UserRole, {"type": "file", "path": filepath})
+            file_item.setExpanded(True)
+
+            cat_item = QTreeWidgetItem(file_item, ["Characters"])
+            cat_item.setData(0, Qt.UserRole, {
+                "type": "category", "category": "characters", "path": filepath,
+            })
+            cat_item.setExpanded(True)
+
+            for entry_id in data.get("characters", {}):
+                entry_item = QTreeWidgetItem(cat_item, [entry_id])
+                entry_item.setData(0, Qt.UserRole, {
+                    "type": "entry", "category": "characters",
+                    "entry_id": entry_id, "path": filepath,
+                })
+
+    def _on_char_tree_selected(self, current, previous):
+        if not current:
+            return
+        info = current.data(0, Qt.UserRole)
+        if not info or info["type"] != "entry":
+            self._stack.setCurrentWidget(self._empty_page)
+            self._id_label.setText("Select a character entry to edit")
+            self._current_entry = None
+            return
+
+        filepath = info["path"]
+        entry_id = info["entry_id"]
+        self._flush_undo()
+
+        entry_data = self._char_file_data[filepath]["characters"][entry_id]
+        self._current_entry = (filepath, "characters", entry_id)
+        self._snapshot = copy.deepcopy(entry_data)
+        self._id_label.setText(f"{os.path.basename(filepath)} > Characters > {entry_id}")
+        self._char_editor.set_data(entry_data)
+        self._stack.setCurrentWidget(self._char_editor)
+
+    def _new_char_file(self):
+        if self._mode != "character":
+            self._statusbar.showMessage("Switch to Character Editor first", 3000)
+            return
+        file_id, ok = QInputDialog.getText(self, "New Character File", "File ID:")
+        if not ok or not file_id.strip():
+            return
+        file_id = file_id.strip()
+        filepath = os.path.join(CHAR_DIR, f"{file_id}.json")
+        if filepath in self._char_file_data or os.path.exists(filepath):
+            QMessageBox.warning(self, "Error", f"File '{file_id}.json' already exists")
+            return
+        self._char_file_data[filepath] = {
+            "version": 1,
+            "file_id": file_id,
+            "characters": {},
+        }
+        self.mark_dirty()
+        self._build_char_tree()
+        self._statusbar.showMessage(f"Created: {file_id}.json", 3000)
+
+    def _add_char_id(self):
+        item = self._tree.currentItem()
+        if not item:
+            return
+        info = item.data(0, Qt.UserRole)
+        if not info:
+            return
+        if info["type"] == "category":
+            filepath = info["path"]
+        elif info["type"] == "entry":
+            filepath = info["path"]
+        else:
+            self._statusbar.showMessage("Select a character category or entry first", 3000)
+            return
+        new_id, ok = QInputDialog.getText(self, "Add Character", "New character ID:")
+        if not ok or not new_id.strip():
+            return
+        new_id = new_id.strip()
+        chars = self._char_file_data[filepath]["characters"]
+        if new_id in chars:
+            QMessageBox.warning(self, "Error", f"ID '{new_id}' already exists")
+            return
+        chars[new_id] = copy.deepcopy(DEFAULT_CHARACTER)
+        self.mark_dirty()
+        self._build_char_tree()
+        self._select_tree_entry(filepath, "characters", new_id)
+        self._statusbar.showMessage(f"Added: characters.{new_id}", 3000)
+
+    def _delete_char_id(self):
+        if not self._current_entry:
+            return
+        filepath, cat, entry_id = self._current_entry
+        reply = QMessageBox.question(
+            self, "Delete", f"Delete {cat}.{entry_id}?",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        del self._char_file_data[filepath]["characters"][entry_id]
+        self._current_entry = None
+        self._snapshot = None
+        self.mark_dirty()
+        self._build_char_tree()
+        self._stack.setCurrentWidget(self._empty_page)
+        self._id_label.setText("Select a character entry to edit")
+        self._statusbar.showMessage(f"Deleted: {cat}.{entry_id}", 3000)
+
+    def _rename_char_id(self):
+        if not self._current_entry:
+            self._statusbar.showMessage("Select an entry to rename", 3000)
+            return
+        filepath, cat, old_id = self._current_entry
+        new_id, ok = QInputDialog.getText(
+            self, "Rename ID", f"New name for '{old_id}':", text=old_id)
+        if not ok or not new_id.strip():
+            return
+        new_id = new_id.strip()
+        if new_id == old_id:
+            return
+        chars = self._char_file_data[filepath]["characters"]
+        if new_id in chars:
+            QMessageBox.warning(self, "Error", f"ID '{new_id}' already exists")
+            return
+        self._flush_undo()
+        cmd = RenameCommand(
+            self._char_file_data, filepath, "characters", old_id, new_id,
+            f"Rename characters.{old_id} -> {new_id}",
+        )
+        self._pushing_undo = True
+        self._undo_stack.push(cmd)
+        self._pushing_undo = False
+        self._current_entry = (filepath, "characters", new_id)
+        self._snapshot = copy.deepcopy(chars[new_id])
+        self._dirty = True
+        self._update_title()
+        self._build_char_tree()
+        self._select_tree_entry(filepath, "characters", new_id)
+        self._statusbar.showMessage(f"Renamed: {old_id} -> {new_id}", 3000)
 
     def _on_undo_clean_changed(self, clean):
         """UndoStack の clean 状態変化時。"""
@@ -1140,20 +2927,41 @@ class EditorWindow(QMainWindow):
         """Undo/Redo 実行後にエディタUIを再読み込みする。"""
         if self._pushing_undo or self._closing:
             return
+        if self._mode == "map":
+            if not self._current_map_path or self._current_map_path not in self._map_file_data:
+                return
+            map_data = self._map_file_data[self._current_map_path]
+            self._map_snapshot = copy.deepcopy(map_data)
+            self._map_canvas.set_map_data(map_data)
+            self._map_side_panel._properties.set_data(map_data)
+            self._map_side_panel._palette.load_tileset(
+                map_data.get("tileset", ""),
+                map_data.get("tile_size", 16),
+            )
+            self._dirty = True
+            self._update_title()
+            return
         if not self._current_entry:
             return
         filepath, cat, entry_id = self._current_entry
-        if filepath not in self._file_data:
+        store = self._get_store(cat)
+        if filepath not in store:
             return
-        data = self._file_data[filepath]
+        data = store[filepath]
 
         # リネーム Undo/Redo でIDが変わった場合: ツリー再構築してリセット
         if entry_id not in data.get(cat, {}):
-            self._tree.load_files(self._file_data)
+            if cat == "characters":
+                self._build_char_tree()
+            else:
+                self._tree.load_files(self._file_data)
             self._current_entry = None
             self._snapshot = None
             self._stack.setCurrentWidget(self._empty_page)
-            self._id_label.setText("Select an item from the tree")
+            self._id_label.setText(
+                "Select a character entry to edit" if cat == "characters"
+                else "Select an item from the tree"
+            )
             self._preview.clear_preview()
             self._dirty = True
             self._update_title()
@@ -1169,14 +2977,19 @@ class EditorWindow(QMainWindow):
             self._sel_editor.set_data(entry_data)
         elif cat == "telops":
             self._telop_editor.set_data(entry_data)
+        elif cat == "events":
+            self._event_editor.set_data(entry_data)
+        elif cat == "characters":
+            self._char_editor.set_data(entry_data)
 
         self._dirty = True
         self._update_title()
-        self._update_preview()
+        if cat != "characters":
+            self._update_preview()
 
     def _update_preview(self):
         """現在の編集内容でプレビューを更新する。"""
-        if not self._current_entry:
+        if self._mode != "text" or not self._current_entry:
             self._preview.clear_preview()
             return
 
@@ -1224,7 +3037,7 @@ class EditorWindow(QMainWindow):
         """コンパイラを実行する。"""
         # 未保存があれば先に保存
         if self._dirty:
-            self._save_all()
+            self._save_current()
 
         self._statusbar.showMessage("Compiling...")
         QApplication.processEvents()
@@ -1289,6 +3102,9 @@ class EditorWindow(QMainWindow):
 
     def _add_id(self):
         """選択中のカテゴリに新しいIDを追加する。"""
+        if self._mode == "character":
+            self._add_char_id()
+            return
         item = self._tree.currentItem()
         if not item:
             return
@@ -1324,6 +3140,8 @@ class EditorWindow(QMainWindow):
             data[cat][new_id] = {"items": ["選択肢1"], "cancel_index": 0}
         elif cat == "telops":
             data[cat][new_id] = {"lines": ["テロップテキスト"], "scroll_speed": 1.0}
+        elif cat == "events":
+            data[cat][new_id] = [{"cmd": "wait", "duration": 60}]
 
         self.mark_dirty()
         self._tree.load_files(self._file_data)
@@ -1331,6 +3149,9 @@ class EditorWindow(QMainWindow):
 
     def _delete_id(self):
         """選択中のIDを削除する。"""
+        if self._mode == "character":
+            self._delete_char_id()
+            return
         if not self._current_entry:
             return
         filepath, cat, entry_id = self._current_entry
@@ -1363,6 +3184,9 @@ class EditorWindow(QMainWindow):
 
     def _rename_id(self):
         """選択中のIDをリネームする。"""
+        if self._mode == "character":
+            self._rename_char_id()
+            return
         if not self._current_entry:
             self._statusbar.showMessage("Select an entry to rename", 3000)
             return
@@ -1443,6 +3267,11 @@ class EditorWindow(QMainWindow):
 
     def _on_search_changed(self, text):
         """検索テキスト変更時のインクリメンタル検索。"""
+        if self._mode != "text":
+            self._search_results.clear()
+            self._search_index = -1
+            self._search_count_label.setText("")
+            return
         self._search_results.clear()
         self._search_index = -1
 
@@ -1498,6 +3327,13 @@ class EditorWindow(QMainWindow):
             for line in entry_data.get("lines", []):
                 if query in line.lower():
                     return True
+        elif cat == "events":
+            for cmd in entry_data:
+                if query in cmd.get("cmd", "").lower():
+                    return True
+                for value in cmd.values():
+                    if isinstance(value, str) and query in value.lower():
+                        return True
 
         return False
 
@@ -1549,7 +3385,7 @@ class EditorWindow(QMainWindow):
                 QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
             )
             if reply == QMessageBox.Save:
-                self._save_all()
+                self._save_current()
             elif reply == QMessageBox.Cancel:
                 event.ignore()
                 return
