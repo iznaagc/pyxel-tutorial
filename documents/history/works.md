@@ -2,6 +2,50 @@
 
 ---
 
+## 2026-04-07 - gui_editor 復旧: STEP 4-D（ミニマップ＋パン）実施
+
+**ブランチ**: `task/asset-loading-support`  
+**担当**: Claude Code  
+**変更ファイル**: `tools/gui_editor.py`, `tools/gui_editor.py.bak_step4d`, `documents/history/works.md`
+
+### 概要
+
+MapCanvas に中ドラッグによるパン（スクロール）機能を追加し、MapSidePanel 下部にミニマップウィジェットを実装しました。ミニマップはマップ全体の縮小表示、ビューポート枠の表示、クリック/ドラッグによるジャンプ機能を持ちます。
+
+### 変更内容
+
+| 項目 | 内容 |
+|------|------|
+| バックアップ作成 | `tools/gui_editor.py` を `tools/gui_editor.py.bak_step4d` として退避 |
+| MapCanvas パン機能 | `_pan_x` / `_pan_y` オフセット追加。中ドラッグでパン、ズーム時もオフセット維持 |
+| MapCanvas API追加 | `viewport_info()` — ビューポート情報取得、`pan_to_tile()` — 指定タイルへジャンプ |
+| MapCanvas シグナル | `viewport_changed` — パン/ズーム時に発火 |
+| 座標系パン対応 | `_tile_rect`、`_tile_at_pos`、ドラッグプレビュー、選択範囲、ペーストプレビューの全座標計算をパンオフセット対応に修正 |
+| Minimap 新規実装 | マップ全体の縮小描画、ビューポート枠（黄色）、クリック/ドラッグでジャンプ |
+| MapSidePanel 拡張 | 下部に「Minimap」ラベルとミニマップウィジェットを追加 |
+| EditorWindow 統合 | ミニマップのジャンプシグナル接続、ビューポート変更時の自動更新、マップ選択/プロパティ変更時のミニマップ更新 |
+| resize 撤廃 | paintEvent 末尾の `self.resize()` を削除（パン対応のため固定サイズ化） |
+
+### 確認内容
+
+- `py_compile` で構文チェック通過
+- オフスクリーンテストで以下を確認:
+  - Minimap ウィジェットが MapSidePanel に配置される
+  - DebugMap 読み込み時にミニマップにマップデータが反映
+  - `viewport_info()` が正しいビューポート情報を返す
+  - パン後のビューポート座標が正しく変化
+  - `pan_to_tile()` でキャンバスがジャンプ
+  - ミニマップの `jump_requested` シグナルでキャンバスがジャンプ
+  - 全モード切替が正常動作
+
+### 備考
+
+- ミニマップは最上位レイヤーの可視タイルを縮小描画（全レイヤー合成は重すぎるため省略）
+- ビューポート枠はパン/ズーム操作のたびにリアルタイム更新
+- 次の STEP 4 候補: イベント配置 UI、レイヤー機能の仕上げ
+
+---
+
 ## 2026-04-06 - gui_editor 復旧: STEP 4-C（通行判定 UI）実施
 
 **ブランチ**: `task/asset-loading-support`  

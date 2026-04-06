@@ -1296,6 +1296,7 @@ class MapCanvas(QWidget):
 
     tool_changed_by_key = Signal(str)
     erase_mode_changed_by_key = Signal(bool)
+    viewport_changed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1317,9 +1318,15 @@ class MapCanvas(QWidget):
         self._clipboard_tiles = None
         self._paste_origin = None
         self._show_passability = False
+        self._pan_x = 0.0
+        self._pan_y = 0.0
+        self._panning = False
+        self._pan_last = None
 
     def set_map_data(self, map_data):
         self._map_data = map_data
+        self._pan_x = 0.0
+        self._pan_y = 0.0
         self._load_tileset()
         self.update()
 
@@ -1348,6 +1355,28 @@ class MapCanvas(QWidget):
         self._show_passability = bool(enabled)
         self.update()
 
+    def viewport_info(self):
+        """ミニマップ用: マップ全体サイズとビューポート領域をタイル単位で返す。"""
+        if not self._map_data:
+            return None
+        w = self._map_data.get("width", 0)
+        h = self._map_data.get("height", 0)
+        tile_size = self._map_data.get("tile_size", 16) * self._zoom
+        vx = -self._pan_x / tile_size
+        vy = -self._pan_y / tile_size
+        vw = self.width() / tile_size
+        vh = self.height() / tile_size
+        return {"map_w": w, "map_h": h, "vx": vx, "vy": vy, "vw": vw, "vh": vh}
+
+    def pan_to_tile(self, tile_col, tile_row):
+        """指定タイルがキャンバス中央に来るようにパン。"""
+        if not self._map_data:
+            return
+        tile_size = self._map_data.get("tile_size", 16) * self._zoom
+        self._pan_x = self.width() / 2 - (tile_col + 0.5) * tile_size
+        self._pan_y = self.height() / 2 - (tile_row + 0.5) * tile_size
+        self.update()
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         # ToolIconBar を右上に配置
@@ -1362,14 +1391,14 @@ class MapCanvas(QWidget):
 
     def _tile_rect(self, col, row):
         tile_size = self._map_data.get("tile_size", 16) * self._zoom
-        return QRectF(col * tile_size, row * tile_size, tile_size, tile_size)
+        return QRectF(col * tile_size + self._pan_x, row * tile_size + self._pan_y, tile_size, tile_size)
 
     def _tile_at_pos(self, pos):
         if not self._map_data:
             return None
         tile_size = self._map_data.get("tile_size", 16) * self._zoom
-        col = int(pos.x()) // tile_size
-        row = int(pos.y()) // tile_size
+        col = int(pos.x() - self._pan_x) // tile_size
+        row = int(pos.y() - self._pan_y) // tile_size
         if 0 <= row < self._map_data.get("height", 0) and 0 <= col < self._map_data.get("width", 0):
             return row, col
         return None
@@ -1538,6 +1567,11 @@ class MapCanvas(QWidget):
             super().keyPressEvent(event)
 
     def mousePressEvent(self, event):
+        if event.button() == Qt.MiddleButton:
+            self._panning = True
+            self._pan_last = event.position()
+            self.setCursor(Qt.ClosedHandCursor)
+            return
         pos = self._tile_at_pos(event.position())
         if pos is None:
             return
@@ -1569,6 +1603,14 @@ class MapCanvas(QWidget):
         self._paint_tile(row, col, tile_value)
 
     def mouseMoveEvent(self, event):
+        if self._panning and self._pan_last is not None:
+            delta = event.position() - self._pan_last
+            self._pan_x += delta.x()
+            self._pan_y += delta.y()
+            self._pan_last = event.position()
+            self.update()
+            self.viewport_changed.emit()
+            return
         buttons = event.buttons()
         pos = self._tile_at_pos(event.position())
         if pos is None:
@@ -1593,6 +1635,11 @@ class MapCanvas(QWidget):
             self._paint_tile(row, col, tile_value)
 
     def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MiddleButton and self._panning:
+            self._panning = False
+            self._pan_last = None
+            self.setCursor(Qt.ArrowCursor)
+            return
         if self._tool == "select":
             self.update()
             return
@@ -1610,6 +1657,7 @@ class MapCanvas(QWidget):
         else:
             self._zoom = max(1, self._zoom - 1)
         self.update()
+        self.viewport_changed.emit()
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -1681,8 +1729,8 @@ class MapCanvas(QWidget):
             top, bottom = sorted((sr, er))
             left, right = sorted((sc, ec))
             preview = QRectF(
-                left * draw_size,
-                top * draw_size,
+                left * draw_size + self._pan_x,
+                top * draw_size + self._pan_y,
                 (right - left + 1) * draw_size,
                 (bottom - top + 1) * draw_size,
             )
@@ -1694,8 +1742,8 @@ class MapCanvas(QWidget):
         if bounds is not None:
             top, left, bottom, right = bounds
             selection_rect = QRectF(
-                left * draw_size,
-                top * draw_size,
+                left * draw_size + self._pan_x,
+                top * draw_size + self._pan_y,
                 (right - left + 1) * draw_size,
                 (bottom - top + 1) * draw_size,
             )
@@ -1708,8 +1756,8 @@ class MapCanvas(QWidget):
             rows = len(self._clipboard_tiles)
             cols = len(self._clipboard_tiles[0]) if rows else 0
             paste_rect = QRectF(
-                start_col * draw_size,
-                start_row * draw_size,
+                start_col * draw_size + self._pan_x,
+                start_row * draw_size + self._pan_y,
                 cols * draw_size,
                 rows * draw_size,
             )
@@ -1728,8 +1776,8 @@ class MapCanvas(QWidget):
                         sy = (idx // cols_in_tileset) * tile_size
                         src = QRectF(sx, sy, tile_size, tile_size)
                         dest = QRectF(
-                            (start_col + col_offset) * draw_size,
-                            (start_row + row_offset) * draw_size,
+                            (start_col + col_offset) * draw_size + self._pan_x,
+                            (start_row + row_offset) * draw_size + self._pan_y,
                             draw_size,
                             draw_size,
                         )
@@ -1742,8 +1790,6 @@ class MapCanvas(QWidget):
             8, 16,
             f"Tool: {self._tool} {'(eraser)' if self._erase_mode else ''} Layer: {self._active_layer_idx}"
         )
-
-        self.resize(width * draw_size + 2, height * draw_size + 2)
 
 
 class ToolIconBar(QWidget):
@@ -2061,6 +2107,121 @@ class LayerPanel(QWidget):
         self.layers_changed.emit()
 
 
+class Minimap(QWidget):
+    """マップ全体の縮小表示。クリックでジャンプ。"""
+
+    jump_requested = Signal(float, float)  # tile_col, tile_row
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(120)
+        self.setMinimumWidth(100)
+        self._map_data = None
+        self._tileset_image = QImage()
+        self._viewport_info = None
+
+    def set_map_data(self, map_data):
+        self._map_data = map_data
+        if map_data:
+            tileset_name = map_data.get("tileset", "")
+            path = os.path.join(TILESET_DIR, tileset_name) if tileset_name else ""
+            self._tileset_image = QImage(path) if path and os.path.isfile(path) else QImage()
+        else:
+            self._tileset_image = QImage()
+        self.update()
+
+    def set_viewport_info(self, info):
+        self._viewport_info = info
+        self.update()
+
+    def _map_to_widget(self):
+        """マップ全体を widget 内にフィットさせるスケールとオフセットを返す。"""
+        if not self._map_data:
+            return 1.0, 0.0, 0.0
+        mw = self._map_data.get("width", 1)
+        mh = self._map_data.get("height", 1)
+        scale_x = self.width() / max(1, mw)
+        scale_y = self.height() / max(1, mh)
+        scale = min(scale_x, scale_y)
+        ox = (self.width() - mw * scale) / 2
+        oy = (self.height() - mh * scale) / 2
+        return scale, ox, oy
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(20, 20, 20))
+        if not self._map_data:
+            painter.setPen(QColor(120, 120, 120))
+            painter.drawText(self.rect(), Qt.AlignCenter, "No Map")
+            return
+
+        mw = self._map_data.get("width", 0)
+        mh = self._map_data.get("height", 0)
+        tile_size = self._map_data.get("tile_size", 16)
+        scale, ox, oy = self._map_to_widget()
+
+        # タイルを縮小描画
+        cols_in_ts = max(1, self._tileset_image.width() // tile_size) if not self._tileset_image.isNull() else 1
+        for row in range(mh):
+            for col in range(mw):
+                rx = ox + col * scale
+                ry = oy + row * scale
+                dest = QRectF(rx, ry, scale, scale)
+                # 最上位レイヤーの非0タイルを描画
+                drawn = False
+                for layer in reversed(self._map_data.get("layers", [])):
+                    if not layer.get("visible", True):
+                        continue
+                    tiles = layer.get("tiles", [])
+                    if row < len(tiles) and col < len(tiles[row]):
+                        tid = tiles[row][col]
+                        if tid > 0 and not self._tileset_image.isNull():
+                            idx = tid - 1
+                            sx = (idx % cols_in_ts) * tile_size
+                            sy = (idx // cols_in_ts) * tile_size
+                            src = QRectF(sx, sy, tile_size, tile_size)
+                            painter.drawImage(dest, self._tileset_image, src)
+                            drawn = True
+                            break
+                if not drawn:
+                    painter.fillRect(dest, QColor(40, 40, 40))
+
+        # ビューポート枠
+        if self._viewport_info:
+            vi = self._viewport_info
+            vx = ox + vi["vx"] * scale
+            vy = oy + vi["vy"] * scale
+            vw = vi["vw"] * scale
+            vh = vi["vh"] * scale
+            painter.setPen(QPen(QColor(255, 255, 0), 2))
+            painter.setBrush(QColor(255, 255, 0, 30))
+            painter.drawRect(QRectF(vx, vy, vw, vh))
+
+        # 枠線
+        painter.setPen(QPen(QColor(100, 100, 100), 1))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRect(QRectF(ox, oy, mw * scale, mh * scale))
+
+    def mousePressEvent(self, event):
+        self._jump_to(event.position())
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() & Qt.LeftButton:
+            self._jump_to(event.position())
+
+    def _jump_to(self, pos):
+        if not self._map_data:
+            return
+        scale, ox, oy = self._map_to_widget()
+        tile_col = (pos.x() - ox) / scale
+        tile_row = (pos.y() - oy) / scale
+        mw = self._map_data.get("width", 0)
+        mh = self._map_data.get("height", 0)
+        tile_col = max(0, min(tile_col, mw - 1))
+        tile_row = max(0, min(tile_row, mh - 1))
+        self.jump_requested.emit(tile_col, tile_row)
+
+
 class MapSidePanel(QWidget):
     """TilesetPalette と MapPropertyPanel のコンテナ。"""
 
@@ -2077,6 +2238,9 @@ class MapSidePanel(QWidget):
         layout.addWidget(QLabel("Map Properties"))
         self._properties = MapPropertyPanel()
         layout.addWidget(self._properties)
+        layout.addWidget(QLabel("Minimap"))
+        self._minimap = Minimap()
+        layout.addWidget(self._minimap)
 
 
 class CharacterEditor(QScrollArea):
@@ -2440,6 +2604,8 @@ class EditorWindow(QMainWindow):
         self._map_canvas.erase_mode_changed_by_key.connect(self._tool_icon_bar.set_erase_mode)
         # 通行判定オーバーレイトグル
         self._tool_icon_bar.passability_toggled.connect(self._map_canvas.set_show_passability)
+        # ビューポート変更をミニマップに反映
+        self._map_canvas.viewport_changed.connect(self._update_minimap_viewport)
 
         self._map_side_panel = MapSidePanel()
         self._map_side_panel.hide()
@@ -2449,6 +2615,9 @@ class EditorWindow(QMainWindow):
         self._map_side_panel._layers.layers_changed.connect(self._on_map_layers_changed)
         self._map_side_panel._properties.changed.connect(self._on_map_property_changed)
         self._map_side_panel._properties.tileset_changed.connect(self._on_map_tileset_changed)
+        # ミニマップ接続
+        self._map_side_panel._minimap.jump_requested.connect(self._map_canvas.pan_to_tile)
+        self._map_side_panel._minimap.jump_requested.connect(lambda *_: self._update_minimap())
         self._splitter.addWidget(self._map_side_panel)
 
         self._splitter.setSizes([200, 500, 400, 0, 0])
@@ -2694,6 +2863,8 @@ class EditorWindow(QMainWindow):
         self._update_title()
         if self._mode == "text":
             self._update_preview()
+        if self._mode == "map":
+            self._update_minimap()
         # 変更をデバウンスして UndoStack に push
         if not hasattr(self, "_undo_timer"):
             self._undo_timer = QTimer(self)
@@ -2894,6 +3065,7 @@ class EditorWindow(QMainWindow):
             self._map_snapshot = None
             self._id_label.setText("Select a map to edit")
             self._map_canvas.set_map_data(None)
+            self._map_side_panel._minimap.set_map_data(None)
             return
         filepath = info["path"]
         self._flush_undo()
@@ -2907,6 +3079,26 @@ class EditorWindow(QMainWindow):
         self._map_side_panel._layers.set_active_layer(0)
         self._map_side_panel._properties.set_data(map_data)
         self._map_side_panel._palette.load_tileset(map_data.get("tileset", ""), map_data.get("tile_size", 16))
+        self._update_minimap()
+
+    def _update_minimap_viewport(self):
+        """ミニマップのビューポート枠のみ更新（軽量）。"""
+        if self._mode != "map":
+            return
+        vi = self._map_canvas.viewport_info()
+        self._map_side_panel._minimap.set_viewport_info(vi)
+
+    def _update_minimap(self):
+        """ミニマップの表示を更新する。"""
+        if self._mode != "map":
+            return
+        if self._current_map_path:
+            map_data = self._map_file_data.get(self._current_map_path)
+            self._map_side_panel._minimap.set_map_data(map_data)
+        else:
+            self._map_side_panel._minimap.set_map_data(None)
+        vi = self._map_canvas.viewport_info()
+        self._map_side_panel._minimap.set_viewport_info(vi)
 
     def _on_map_property_changed(self):
         if self._mode != "map" or not self._current_map_path:
