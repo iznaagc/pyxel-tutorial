@@ -1297,6 +1297,8 @@ class MapCanvas(QWidget):
     tool_changed_by_key = Signal(str)
     erase_mode_changed_by_key = Signal(bool)
     viewport_changed = Signal()
+    event_place_requested = Signal(int, int)    # col, row — 空マスダブルクリック
+    event_jump_requested = Signal(str)           # event_id — 配置済みマスダブルクリック
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1659,6 +1661,21 @@ class MapCanvas(QWidget):
         self.update()
         self.viewport_changed.emit()
 
+    def mouseDoubleClickEvent(self, event):
+        if event.button() != Qt.LeftButton or not self._map_data:
+            return
+        pos = self._tile_at_pos(event.position())
+        if pos is None:
+            return
+        row, col = pos
+        # 既存イベントがあるかチェック
+        for ev in self._map_data.get("events", []):
+            if ev.get("x") == col and ev.get("y") == row:
+                self.event_jump_requested.emit(ev.get("event_id", ""))
+                return
+        # 空マス → イベント配置リクエスト
+        self.event_place_requested.emit(col, row)
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.fillRect(self.rect(), QColor(30, 30, 30))
@@ -1722,6 +1739,23 @@ class MapCanvas(QWidget):
                                     int(rect.right() - 2), int(rect.top() + 2),
                                     int(rect.left() + 2), int(rect.bottom() - 2),
                                 )
+
+        # イベントバッジ描画
+        events = self._map_data.get("events", [])
+        if events:
+            badge_font = painter.font()
+            badge_font.setBold(True)
+            badge_font.setPixelSize(max(10, int(draw_size * 0.5)))
+            painter.setFont(badge_font)
+            for ev in events:
+                ex, ey = ev.get("x", -1), ev.get("y", -1)
+                if 0 <= ex < width and 0 <= ey < height:
+                    rect = self._tile_rect(ex, ey)
+                    painter.fillRect(rect, QColor(100, 50, 200, 80))
+                    painter.setPen(QPen(QColor(200, 150, 255), 1))
+                    painter.drawRect(rect)
+                    painter.setPen(QColor(255, 220, 255))
+                    painter.drawText(rect, Qt.AlignCenter, "E")
 
         if self._drag_start is not None and self._drag_current is not None:
             sr, sc = self._drag_start
@@ -2606,6 +2640,9 @@ class EditorWindow(QMainWindow):
         self._tool_icon_bar.passability_toggled.connect(self._map_canvas.set_show_passability)
         # ビューポート変更をミニマップに反映
         self._map_canvas.viewport_changed.connect(self._update_minimap_viewport)
+        # イベント配置/ジャンプ
+        self._map_canvas.event_place_requested.connect(self._on_event_place)
+        self._map_canvas.event_jump_requested.connect(self._on_event_jump)
 
         self._map_side_panel = MapSidePanel()
         self._map_side_panel.hide()
@@ -3134,6 +3171,81 @@ class EditorWindow(QMainWindow):
         self._map_canvas.set_map_data(map_data)
         self._map_canvas.set_active_layer(max(0, active))
         self.mark_dirty()
+
+    def _collect_event_ids(self):
+        """data/text/*.json の events カテゴリから全イベントIDを収集。"""
+        event_ids = []
+        for filepath, data in self._file_data.items():
+            for eid in data.get("events", {}).keys():
+                event_ids.append(eid)
+        return sorted(event_ids)
+
+    def _on_event_place(self, col, row):
+        """空マスにイベントを配置する。"""
+        if self._mode != "map" or not self._current_map_path:
+            return
+        # テキストデータが未読み込みの場合は読む
+        if not self._file_data:
+            self._load_all_files()
+        event_ids = self._collect_event_ids()
+        if not event_ids:
+            QMessageBox.information(self, "No Events",
+                "No events found in data/text/*.json.\nCreate events in Text Editor first.")
+            return
+        event_id, ok = QInputDialog.getItem(
+            self, "Place Event", f"Select event for ({col}, {row}):",
+            event_ids, 0, False,
+        )
+        if not ok or not event_id:
+            return
+        map_data = self._map_file_data[self._current_map_path]
+        events = map_data.setdefault("events", [])
+        events.append({"x": col, "y": row, "event_id": event_id})
+        self._map_canvas.update()
+        self.mark_dirty()
+        self._statusbar.showMessage(f"Placed event '{event_id}' at ({col}, {row})", 3000)
+
+    def _on_event_jump(self, event_id):
+        """配置済みイベントをダブルクリック → Text Editor のイベントへジャンプ。"""
+        if not event_id:
+            return
+        # イベント削除の選択肢を提供
+        result = QMessageBox.question(
+            self, "Event Action",
+            f"Event: {event_id}\n\nJump to Text Editor to edit this event?\n"
+            "(Click 'No' to remove this event from the map instead)",
+            QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+        )
+        if result == QMessageBox.Cancel:
+            return
+        if result == QMessageBox.No:
+            # イベント削除
+            if self._current_map_path:
+                map_data = self._map_file_data[self._current_map_path]
+                events = map_data.get("events", [])
+                map_data["events"] = [e for e in events if e.get("event_id") != event_id]
+                self._map_canvas.update()
+                self.mark_dirty()
+                self._statusbar.showMessage(f"Removed event '{event_id}'", 3000)
+            return
+        # Text Editor へジャンプ
+        self._switch_mode("text")
+        # ツリーで該当イベントを選択
+        root = self._tree.invisibleRootItem()
+        for fi in range(root.childCount()):
+            file_item = root.child(fi)
+            for ci in range(file_item.childCount()):
+                cat_item = file_item.child(ci)
+                info = cat_item.data(0, Qt.UserRole)
+                if info and info.get("category") == "events":
+                    for ei in range(cat_item.childCount()):
+                        entry_item = cat_item.child(ei)
+                        entry_info = entry_item.data(0, Qt.UserRole)
+                        if entry_info and entry_info.get("entry_id") == event_id:
+                            self._tree.setCurrentItem(entry_item)
+                            self._statusbar.showMessage(f"Jumped to event '{event_id}'", 3000)
+                            return
+        self._statusbar.showMessage(f"Event '{event_id}' not found in text data", 3000)
 
     def _new_map(self):
         if self._mode != "map":

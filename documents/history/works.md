@@ -2,6 +2,45 @@
 
 ---
 
+## 2026-04-07 - gui_editor 復旧: STEP 4-E（イベント配置 UI）実施
+
+**ブランチ**: `task/asset-loading-support`  
+**担当**: Claude Code  
+**変更ファイル**: `tools/gui_editor.py`, `tools/gui_editor.py.bak_step4e`, `documents/history/works.md`
+
+### 概要
+
+マップ上にイベントを配置・表示・削除する機能と、配置済みイベントから Text Editor へジャンプする機能を実装しました。
+
+### 変更内容
+
+| 項目 | 内容 |
+|------|------|
+| バックアップ作成 | `tools/gui_editor.py` を `tools/gui_editor.py.bak_step4e` として退避 |
+| イベントバッジ描画 | paintEvent にイベント配置マスの紫色「E」バッジ描画を追加 |
+| MapCanvas シグナル | `event_place_requested(col, row)` — 空マスダブルクリック、`event_jump_requested(event_id)` — 配置済みマスダブルクリック |
+| mouseDoubleClickEvent | ダブルクリック時に既存イベントの有無を判定して適切なシグナルを発火 |
+| イベント配置ダイアログ | `_on_event_place()` — data/text/*.json の events カテゴリからイベント一覧を表示し選択配置 |
+| イベントジャンプ | `_on_event_jump()` — Yes でテキストエディタのイベントへジャンプ、No でマップからイベント削除 |
+| _collect_event_ids | 全テキストファイルの events カテゴリからイベントID一覧を収集するヘルパー |
+
+### 確認内容
+
+- `py_compile` で構文チェック通過
+- オフスクリーンテストで以下を確認:
+  - イベントIDの収集（`ev_opening_demo` が取得される）
+  - マップデータへのイベント追加/削除
+  - イベントバッジ付きの paintEvent がクラッシュしない
+  - 全モード切替が正常動作
+
+### 備考
+
+- イベントデータ形式: `[{"x": col, "y": row, "event_id": "ev_xxx"}, ...]`
+- ダブルクリック時の3択（ジャンプ/削除/キャンセル）で操作ミスを防止
+- 次の STEP 4 候補: レイヤー機能の仕上げ（並べ替え、名前編集など）
+
+---
+
 ## 2026-04-07 - gui_editor 復旧: STEP 4-D（ミニマップ＋パン）実施
 
 **ブランチ**: `task/asset-loading-support`  
