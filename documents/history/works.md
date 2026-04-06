@@ -2,6 +2,43 @@
 
 ---
 
+## 2026-04-06 - gui_editor 復旧: STEP 4-C（通行判定 UI）実施
+
+**ブランチ**: `task/asset-loading-support`  
+**担当**: Claude Code  
+**変更ファイル**: `tools/gui_editor.py`, `tools/gui_editor.py.bak_step4c`, `documents/history/works.md`
+
+### 概要
+
+通行判定（Passability）の表示オーバーレイと編集UIを実装しました。マップ上の通行不可タイルを赤い×で可視化し、タイルごとの通行可否をプロパティパネルで切り替えられます。
+
+### 変更内容
+
+| 項目 | 内容 |
+|------|------|
+| バックアップ作成 | `tools/gui_editor.py` を `tools/gui_editor.py.bak_step4c` として退避 |
+| MapCanvas オーバーレイ | `_show_passability` フラグ追加。ON 時に通行不可タイル（`passability[id]=false`）に赤い×を描画 |
+| MapCanvas ショートカット | `P` キーで通行判定オーバーレイの表示/非表示トグル |
+| ToolIconBar 拡張 | 「Pass (P)」トグルボタン追加。ON 時オレンジ色ハイライト。`passability_toggled` シグナル |
+| MapPropertyPanel 通行判定UI | タイル選択に連動する「Passable / Blocked」トグルボタン。タイルIDごとに `passability` 辞書を編集 |
+| シグナル接続 | TilesetPalette → MapPropertyPanel の `set_selected_tile` 接続を追加 |
+
+### 確認内容
+
+- `py_compile` で構文チェック通過
+- オフスクリーンテストで以下を確認:
+  - ToolIconBar の Pass ボタンで MapCanvas のオーバーレイ表示/非表示がトグル
+  - MapPropertyPanel でタイル選択 → 通行可否の切替 → map_data の passability 辞書に反映
+  - 全モード切替が正常動作
+
+### 備考
+
+- passability データ形式: `{"タイルID文字列": bool}` — 未登録タイルはデフォルト通行可（true）
+- オーバーレイは全レイヤーの最上位非0タイルIDを基準に判定
+- 次の STEP 4 候補: ミニマップ、イベント配置 UI、レイヤー機能の仕上げ
+
+---
+
 ## 2026-04-06 - gui_editor 復旧: STEP 4-B（ToolIconBar）実施
 
 **ブランチ**: `task/asset-loading-support`  

@@ -1316,6 +1316,7 @@ class MapCanvas(QWidget):
         self._selection_end = None
         self._clipboard_tiles = None
         self._paste_origin = None
+        self._show_passability = False
 
     def set_map_data(self, map_data):
         self._map_data = map_data
@@ -1341,6 +1342,10 @@ class MapCanvas(QWidget):
 
     def set_erase_mode(self, enabled):
         self._erase_mode = bool(enabled)
+        self.update()
+
+    def set_show_passability(self, enabled):
+        self._show_passability = bool(enabled)
         self.update()
 
     def resizeEvent(self, event):
@@ -1512,6 +1517,8 @@ class MapCanvas(QWidget):
         elif key == Qt.Key_E:
             self.set_erase_mode(not self._erase_mode)
             self.erase_mode_changed_by_key.emit(self._erase_mode)
+        elif key == Qt.Key_P:
+            self.set_show_passability(not self._show_passability)
         elif key == Qt.Key_Delete:
             self._delete_selection()
         elif event.matches(QKeySequence.Copy):
@@ -1638,6 +1645,36 @@ class MapCanvas(QWidget):
                 painter.setPen(QPen(QColor(80, 80, 80), 1))
                 painter.drawRect(rect)
 
+        # 通行判定オーバーレイ
+        if self._show_passability:
+            passability = self._map_data.get("passability", {})
+            if passability:
+                cross_pen = QPen(QColor(255, 60, 60, 180), 2)
+                for row in range(height):
+                    for col in range(width):
+                        # 全レイヤーの最上位の非0タイルIDを取得
+                        top_tile_id = 0
+                        for layer in self._map_data.get("layers", []):
+                            tiles = layer.get("tiles", [])
+                            if row < len(tiles) and col < len(tiles[row]):
+                                tid = tiles[row][col]
+                                if tid > 0:
+                                    top_tile_id = tid
+                        if top_tile_id > 0:
+                            key = str(top_tile_id)
+                            if key in passability and not passability[key]:
+                                # 通行不可 → 赤い×
+                                rect = self._tile_rect(col, row)
+                                painter.setPen(cross_pen)
+                                painter.drawLine(
+                                    int(rect.left() + 2), int(rect.top() + 2),
+                                    int(rect.right() - 2), int(rect.bottom() - 2),
+                                )
+                                painter.drawLine(
+                                    int(rect.right() - 2), int(rect.top() + 2),
+                                    int(rect.left() + 2), int(rect.bottom() - 2),
+                                )
+
         if self._drag_start is not None and self._drag_current is not None:
             sr, sc = self._drag_start
             er, ec = self._drag_current
@@ -1714,6 +1751,7 @@ class ToolIconBar(QWidget):
 
     tool_changed = Signal(str)
     erase_mode_changed = Signal(bool)
+    passability_toggled = Signal(bool)
 
     TOOLS = [
         ("pen", "Pen (B)", "B"),
@@ -1764,6 +1802,18 @@ class ToolIconBar(QWidget):
         self._erase_btn.toggled.connect(self.erase_mode_changed.emit)
         layout.addWidget(self._erase_btn)
 
+        # Passability overlay toggle
+        self._pass_btn = QPushButton("Pass (P)")
+        self._pass_btn.setCheckable(True)
+        self._pass_btn.setFixedSize(90, 26)
+        self._pass_btn.setStyleSheet(
+            "QPushButton { color: #ddd; border: 1px solid #666; border-radius: 3px; }"
+            "QPushButton:checked { background: #cc8800; color: white; border: 1px solid #ddaa22; }"
+            "QPushButton:hover { background: #555; }"
+        )
+        self._pass_btn.toggled.connect(self.passability_toggled.emit)
+        layout.addWidget(self._pass_btn)
+
         self.setFixedWidth(98)
         self.adjustSize()
 
@@ -1783,6 +1833,11 @@ class ToolIconBar(QWidget):
         """外部からEraser状態を設定する。"""
         if self._erase_btn.isChecked() != enabled:
             self._erase_btn.setChecked(enabled)
+
+    def set_show_passability(self, enabled):
+        """外部からPassability表示状態を設定する。"""
+        if self._pass_btn.isChecked() != enabled:
+            self._pass_btn.setChecked(enabled)
 
     def current_tool(self):
         for tool_id, btn in self._tool_buttons.items():
@@ -1827,6 +1882,18 @@ class MapPropertyPanel(QWidget):
         self._tileset_combo.currentTextChanged.connect(self._on_tileset_changed)
         layout.addRow("Tileset:", self._tileset_combo)
 
+        # 通行判定: 選択タイルの通行可否を切り替え
+        pass_layout = QHBoxLayout()
+        self._pass_tile_label = QLabel("Tile: -")
+        pass_layout.addWidget(self._pass_tile_label)
+        self._pass_toggle_btn = QPushButton("Passable")
+        self._pass_toggle_btn.setCheckable(True)
+        self._pass_toggle_btn.setChecked(True)
+        self._pass_toggle_btn.toggled.connect(self._on_passability_toggled)
+        pass_layout.addWidget(self._pass_toggle_btn)
+        layout.addRow("Passability:", pass_layout)
+        self._selected_tile_id = 0
+
     def _reload_tilesets(self):
         self._tileset_combo.clear()
         self._tileset_combo.addItem("")
@@ -1864,6 +1931,36 @@ class MapPropertyPanel(QWidget):
         self._data["height"] = self._height_spin.value()
         self._data["tile_size"] = self._tile_size_spin.value()
         self.changed.emit()
+
+    def set_selected_tile(self, tile_id):
+        """TilesetPalette で選択されたタイルIDを反映し、通行判定UIを更新。"""
+        self._selected_tile_id = int(tile_id)
+        self._pass_tile_label.setText(f"Tile: {self._selected_tile_id}")
+        self._updating = True
+        if self._data and self._selected_tile_id > 0:
+            passability = self._data.setdefault("passability", {})
+            key = str(self._selected_tile_id)
+            is_passable = passability.get(key, True)
+            self._pass_toggle_btn.setChecked(is_passable)
+            self._pass_toggle_btn.setText("Passable" if is_passable else "Blocked")
+            self._pass_toggle_btn.setEnabled(True)
+        else:
+            self._pass_toggle_btn.setChecked(True)
+            self._pass_toggle_btn.setText("Passable")
+            self._pass_toggle_btn.setEnabled(False)
+        self._updating = False
+
+    def _on_passability_toggled(self, checked):
+        if self._updating or not self._data or self._selected_tile_id <= 0:
+            return
+        passability = self._data.setdefault("passability", {})
+        key = str(self._selected_tile_id)
+        passability[key] = checked
+        self._pass_toggle_btn.setText("Passable" if checked else "Blocked")
+        self.changed.emit()
+        window = self.window()
+        if hasattr(window, "mark_dirty"):
+            window.mark_dirty()
 
 
 class LayerPanel(QWidget):
@@ -2341,10 +2438,13 @@ class EditorWindow(QMainWindow):
         # キーボードショートカットでの変更をToolIconBarに反映
         self._map_canvas.tool_changed_by_key.connect(self._tool_icon_bar.set_tool)
         self._map_canvas.erase_mode_changed_by_key.connect(self._tool_icon_bar.set_erase_mode)
+        # 通行判定オーバーレイトグル
+        self._tool_icon_bar.passability_toggled.connect(self._map_canvas.set_show_passability)
 
         self._map_side_panel = MapSidePanel()
         self._map_side_panel.hide()
         self._map_side_panel._palette.tile_selected.connect(self._map_canvas.set_selected_tile)
+        self._map_side_panel._palette.tile_selected.connect(self._map_side_panel._properties.set_selected_tile)
         self._map_side_panel._layers.active_layer_changed.connect(self._map_canvas.set_active_layer)
         self._map_side_panel._layers.layers_changed.connect(self._on_map_layers_changed)
         self._map_side_panel._properties.changed.connect(self._on_map_property_changed)
