@@ -2,6 +2,45 @@
 
 ---
 
+## 2026-04-06 - gui_editor 復旧: STEP 4-B（ToolIconBar）実施
+
+**ブランチ**: `task/asset-loading-support`  
+**担当**: Claude Code  
+**変更ファイル**: `tools/gui_editor.py`, `tools/gui_editor.py.bak_step4b`, `documents/history/works.md`
+
+### 概要
+
+MapCanvas 上にオーバーレイ配置する `ToolIconBar` クラスを実装し、MapPropertyPanel にあったツール選択（QComboBox）と Eraser チェックボックスを ToolIconBar に移行しました。
+
+### 変更内容
+
+| 項目 | 内容 |
+|------|------|
+| バックアップ作成 | `tools/gui_editor.py` を `tools/gui_editor.py.bak_step4b` として退避 |
+| ToolIconBar 新規実装 | Pen/Rect/Bucket/Select の排他ボタン + Eraser トグルの計5ボタン。MapCanvas の右上にオーバーレイ配置 |
+| MapPropertyPanel 整理 | `tool_changed` / `erase_mode_changed` シグナルと tool_combo / erase_check を削除 |
+| MapCanvas シグナル追加 | `tool_changed_by_key` / `erase_mode_changed_by_key` でキーボードショートカットとToolIconBarの双方向同期 |
+| MapCanvas resizeEvent | ToolIconBar を右上に自動配置 |
+| EditorWindow 統合 | ToolIconBar の生成・シグナル接続。MapPropertyPanel の旧接続を削除 |
+
+### 確認内容
+
+- `py_compile` で構文チェック通過
+- オフスクリーンテストで以下を確認:
+  - ToolIconBar が MapCanvas の子ウィジェットとして配置される
+  - ツールボタンクリック → MapCanvas の `_tool` が変更される
+  - Eraser トグル → MapCanvas の `_erase_mode` が変更される
+  - Text / Character モード切替で壊れない
+  - 全3モードの切替が正常に動作
+
+### 備考
+
+- ToolIconBar のスタイルは半透明の暗色背景で、マップ描画の視認性を妨げない設計
+- キーボードショートカット（B/R/F/S/E）は MapCanvas の keyPressEvent に残し、ToolIconBar のボタン状態と双方向同期
+- 次の STEP 4 候補: MapPropertyPanel の強化（サイズ変更 Apply ボタンなど）、ミニマップ、通行判定 UI、イベント配置 UI
+
+---
+
 ## 2026-04-06 - gui_editor 復旧: STEP 4-A 実施
 
 **ブランチ**: 現在の作業ツリー  

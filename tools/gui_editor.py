@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QCheckBox, QSpinBox, QDoubleSpinBox, QStackedWidget, QPushButton,
     QStatusBar, QMenuBar, QListWidget, QMessageBox, QInputDialog,
     QAbstractItemView, QComboBox, QFormLayout, QScrollArea, QGroupBox,
+    QButtonGroup, QFileDialog,
 )
 from PySide6.QtCore import Qt, QTimer, QRectF, Signal
 from PySide6.QtGui import (
@@ -1293,6 +1294,9 @@ class TilesetPalette(QWidget):
 class MapCanvas(QWidget):
     """単純なマップ描画/ペン編集キャンバス。"""
 
+    tool_changed_by_key = Signal(str)
+    erase_mode_changed_by_key = Signal(bool)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(400, 300)
@@ -1338,6 +1342,13 @@ class MapCanvas(QWidget):
     def set_erase_mode(self, enabled):
         self._erase_mode = bool(enabled)
         self.update()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # ToolIconBar を右上に配置
+        for child in self.children():
+            if isinstance(child, ToolIconBar):
+                child.move(self.width() - child.width() - 6, 6)
 
     def _load_tileset(self):
         self._tileset_name = self._map_data.get("tileset", "") if self._map_data else ""
@@ -1488,14 +1499,19 @@ class MapCanvas(QWidget):
         key = event.key()
         if key == Qt.Key_B:
             self.set_tool("pen")
+            self.tool_changed_by_key.emit("pen")
         elif key == Qt.Key_R:
             self.set_tool("rect")
+            self.tool_changed_by_key.emit("rect")
         elif key == Qt.Key_F:
             self.set_tool("bucket")
+            self.tool_changed_by_key.emit("bucket")
         elif key == Qt.Key_S:
             self.set_tool("select")
+            self.tool_changed_by_key.emit("select")
         elif key == Qt.Key_E:
             self.set_erase_mode(not self._erase_mode)
+            self.erase_mode_changed_by_key.emit(self._erase_mode)
         elif key == Qt.Key_Delete:
             self._delete_selection()
         elif event.matches(QKeySequence.Copy):
@@ -1693,13 +1709,93 @@ class MapCanvas(QWidget):
         self.resize(width * draw_size + 2, height * draw_size + 2)
 
 
+class ToolIconBar(QWidget):
+    """MapCanvas 上に重ねるツール選択バー。"""
+
+    tool_changed = Signal(str)
+    erase_mode_changed = Signal(bool)
+
+    TOOLS = [
+        ("pen", "Pen (B)", "B"),
+        ("rect", "Rect (R)", "R"),
+        ("bucket", "Bucket (F)", "F"),
+        ("select", "Select (S)", "S"),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setStyleSheet(
+            "ToolIconBar { background: rgba(40, 40, 40, 200); border-radius: 4px; }"
+        )
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(2)
+
+        self._tool_group = QButtonGroup(self)
+        self._tool_group.setExclusive(True)
+        self._tool_buttons = {}
+
+        for tool_id, label, shortcut in self.TOOLS:
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setFixedSize(90, 26)
+            btn.setStyleSheet(
+                "QPushButton { color: #ddd; border: 1px solid #666; border-radius: 3px; }"
+                "QPushButton:checked { background: #4488cc; color: white; border: 1px solid #6699dd; }"
+                "QPushButton:hover { background: #555; }"
+            )
+            self._tool_group.addButton(btn)
+            self._tool_buttons[tool_id] = btn
+            layout.addWidget(btn)
+
+        self._tool_buttons["pen"].setChecked(True)
+        self._tool_group.buttonClicked.connect(self._on_tool_clicked)
+
+        # Eraser toggle
+        self._erase_btn = QPushButton("Eraser (E)")
+        self._erase_btn.setCheckable(True)
+        self._erase_btn.setFixedSize(90, 26)
+        self._erase_btn.setStyleSheet(
+            "QPushButton { color: #ddd; border: 1px solid #666; border-radius: 3px; }"
+            "QPushButton:checked { background: #cc4444; color: white; border: 1px solid #dd6666; }"
+            "QPushButton:hover { background: #555; }"
+        )
+        self._erase_btn.toggled.connect(self.erase_mode_changed.emit)
+        layout.addWidget(self._erase_btn)
+
+        self.setFixedWidth(98)
+        self.adjustSize()
+
+    def _on_tool_clicked(self, button):
+        for tool_id, btn in self._tool_buttons.items():
+            if btn is button:
+                self.tool_changed.emit(tool_id)
+                return
+
+    def set_tool(self, tool_id):
+        """外部からツールを設定する（キーボードショートカット連動用）。"""
+        btn = self._tool_buttons.get(tool_id)
+        if btn and not btn.isChecked():
+            btn.setChecked(True)
+
+    def set_erase_mode(self, enabled):
+        """外部からEraser状態を設定する。"""
+        if self._erase_btn.isChecked() != enabled:
+            self._erase_btn.setChecked(enabled)
+
+    def current_tool(self):
+        for tool_id, btn in self._tool_buttons.items():
+            if btn.isChecked():
+                return tool_id
+        return "pen"
+
+
 class MapPropertyPanel(QWidget):
     """マップ基本プロパティ。"""
 
     changed = Signal()
     tileset_changed = Signal(str)
-    tool_changed = Signal(str)
-    erase_mode_changed = Signal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1730,15 +1826,6 @@ class MapPropertyPanel(QWidget):
         self._reload_tilesets()
         self._tileset_combo.currentTextChanged.connect(self._on_tileset_changed)
         layout.addRow("Tileset:", self._tileset_combo)
-
-        self._tool_combo = QComboBox()
-        self._tool_combo.addItems(["pen", "rect", "bucket", "select"])
-        self._tool_combo.currentTextChanged.connect(self.tool_changed.emit)
-        layout.addRow("Tool:", self._tool_combo)
-
-        self._erase_check = QCheckBox("Eraser Mode (E)")
-        self._erase_check.toggled.connect(self.erase_mode_changed.emit)
-        layout.addRow("", self._erase_check)
 
     def _reload_tilesets(self):
         self._tileset_combo.clear()
@@ -2247,6 +2334,14 @@ class EditorWindow(QMainWindow):
         self._map_canvas.hide()
         self._splitter.addWidget(self._map_canvas)
 
+        # ToolIconBar — MapCanvas 上に重ねて配置
+        self._tool_icon_bar = ToolIconBar(self._map_canvas)
+        self._tool_icon_bar.tool_changed.connect(self._map_canvas.set_tool)
+        self._tool_icon_bar.erase_mode_changed.connect(self._map_canvas.set_erase_mode)
+        # キーボードショートカットでの変更をToolIconBarに反映
+        self._map_canvas.tool_changed_by_key.connect(self._tool_icon_bar.set_tool)
+        self._map_canvas.erase_mode_changed_by_key.connect(self._tool_icon_bar.set_erase_mode)
+
         self._map_side_panel = MapSidePanel()
         self._map_side_panel.hide()
         self._map_side_panel._palette.tile_selected.connect(self._map_canvas.set_selected_tile)
@@ -2254,8 +2349,6 @@ class EditorWindow(QMainWindow):
         self._map_side_panel._layers.layers_changed.connect(self._on_map_layers_changed)
         self._map_side_panel._properties.changed.connect(self._on_map_property_changed)
         self._map_side_panel._properties.tileset_changed.connect(self._on_map_tileset_changed)
-        self._map_side_panel._properties.tool_changed.connect(self._map_canvas.set_tool)
-        self._map_side_panel._properties.erase_mode_changed.connect(self._map_canvas.set_erase_mode)
         self._splitter.addWidget(self._map_side_panel)
 
         self._splitter.setSizes([200, 500, 400, 0, 0])
