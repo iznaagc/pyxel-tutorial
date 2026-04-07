@@ -2058,16 +2058,28 @@ class LayerPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self._list = QListWidget()
         self._list.currentRowChanged.connect(self._on_current_row_changed)
+        self._list.itemDoubleClicked.connect(self._rename_layer)
         layout.addWidget(self._list)
 
         buttons = QHBoxLayout()
         self._btn_add = QPushButton("+")
+        self._btn_add.setToolTip("Add layer")
         self._btn_add.clicked.connect(self._add_layer)
         buttons.addWidget(self._btn_add)
         self._btn_del = QPushButton("-")
+        self._btn_del.setToolTip("Delete layer")
         self._btn_del.clicked.connect(self._delete_layer)
         buttons.addWidget(self._btn_del)
-        self._btn_toggle = QPushButton("Toggle")
+        self._btn_up = QPushButton("\u2191")
+        self._btn_up.setToolTip("Move layer up")
+        self._btn_up.clicked.connect(self._move_up)
+        buttons.addWidget(self._btn_up)
+        self._btn_down = QPushButton("\u2193")
+        self._btn_down.setToolTip("Move layer down")
+        self._btn_down.clicked.connect(self._move_down)
+        buttons.addWidget(self._btn_down)
+        self._btn_toggle = QPushButton("Eye")
+        self._btn_toggle.setToolTip("Toggle visibility")
         self._btn_toggle.clicked.connect(self._toggle_visible)
         buttons.addWidget(self._btn_toggle)
         layout.addLayout(buttons)
@@ -2138,6 +2150,47 @@ class LayerPanel(QWidget):
         layers[row]["visible"] = not layers[row].get("visible", True)
         self._refresh()
         self.set_active_layer(row)
+        self.layers_changed.emit()
+
+    def _rename_layer(self, item):
+        if not self._data:
+            return
+        row = self._list.row(item)
+        layers = self._data.get("layers", [])
+        if not (0 <= row < len(layers)):
+            return
+        old_name = layers[row].get("name", "layer")
+        new_name, ok = QInputDialog.getText(
+            self, "Rename Layer", "Layer name:", QLineEdit.Normal, old_name,
+        )
+        if ok and new_name.strip():
+            layers[row]["name"] = new_name.strip()
+            self._refresh()
+            self.set_active_layer(row)
+            self.layers_changed.emit()
+
+    def _move_up(self):
+        if not self._data:
+            return
+        row = self._list.currentRow()
+        layers = self._data.get("layers", [])
+        if row <= 0 or row >= len(layers):
+            return
+        layers[row - 1], layers[row] = layers[row], layers[row - 1]
+        self._refresh()
+        self.set_active_layer(row - 1)
+        self.layers_changed.emit()
+
+    def _move_down(self):
+        if not self._data:
+            return
+        row = self._list.currentRow()
+        layers = self._data.get("layers", [])
+        if row < 0 or row >= len(layers) - 1:
+            return
+        layers[row], layers[row + 1] = layers[row + 1], layers[row]
+        self._refresh()
+        self.set_active_layer(row + 1)
         self.layers_changed.emit()
 
 
