@@ -4,9 +4,10 @@ UIコンポーネントを直接操作して各状態のスクリーンショッ
 
 import os
 import pyxel
-from PIL import Image
+from PIL import Image as PILImage
 
 import config
+from core.graphics import Image as GfxImage, Sprite
 from ui.message_window import MessageWindow
 from ui.select_window import SelectWindow
 from ui.telop_window import TelopWindow
@@ -28,6 +29,7 @@ class ScreenshotHarness:
         pyxel.init(config.SCREEN_WIDTH, config.SCREEN_HEIGHT,
                    title="Screenshot Harness", display_scale=2)
         config.init_font()
+        config.init_assets()
         os.makedirs(SCREENSHOT_DIR, exist_ok=True)
 
         self._shots = self._define_shots()
@@ -59,13 +61,19 @@ class ScreenshotHarness:
             ("active_msg_with_inactive_select", self._draw_active_msg),
             ("telop_story", self._draw_telop_story),
             ("telop_credits", self._draw_telop_credits),
+            # --- オープニングデモ機能確認 ---
+            ("opening_bg_fadein", self._draw_opening_bg_fadein),
+            ("opening_bg_full", self._draw_opening_bg_full),
+            ("opening_sprite_on_bg", self._draw_opening_sprite_on_bg),
+            ("opening_fadeout", self._draw_opening_fadeout),
+            ("opening_message", self._draw_opening_message),
         ]
 
     def _save_current(self, name):
         """現在の画面バッファをPNGに保存。"""
         w, h = config.SCREEN_WIDTH, config.SCREEN_HEIGHT
         scale = 2
-        img = Image.new("RGB", (w * scale, h * scale))
+        img = PILImage.new("RGB", (w * scale, h * scale))
         for py in range(h):
             for px in range(w):
                 col = pyxel.pget(px, py)
@@ -368,6 +376,70 @@ class ScreenshotHarness:
         telop._scroll_y = -(len(lines) * 24 // 2 - config.SCREEN_HEIGHT // 2)
         telop.y = int(telop._scroll_y)
         telop.draw()
+
+
+    # --- オープニングデモ機能確認 ---
+
+    def _draw_opening_bg_fadein(self):
+        """背景画像の半透明フェードイン状態。"""
+        pyxel.cls(0)
+        bg = GfxImage.from_file("background/sample_opening.png")
+        bg.set_fade(0.5)
+        bg.draw()
+        font = config.FONT
+        pyxel.text(8, 4, "Phase 1: 背景フェードイン (alpha=0.5)", 10, font)
+
+    def _draw_opening_bg_full(self):
+        """背景画像の完全表示状態。"""
+        pyxel.cls(0)
+        bg = GfxImage.from_file("background/sample_opening.png")
+        bg.set_fade(1.0)
+        bg.draw()
+        font = config.FONT
+        pyxel.text(8, 4, "背景フェードイン完了 (alpha=1.0)", 10, font)
+
+    def _draw_opening_sprite_on_bg(self):
+        """背景の上にスプライトを表示。"""
+        pyxel.cls(0)
+        bg = GfxImage.from_file("background/sample_opening.png")
+        bg.draw()
+        sprite = Sprite.from_file("sprite/player.png", x=60, y=100, colkey=0)
+        sprite.draw()
+        font = config.FONT
+        pyxel.text(8, 4, "Phase 4: 背景+スプライト表示", 10, font)
+
+    def _draw_opening_fadeout(self):
+        """フェードアウト途中（オーバーレイ半透明）。"""
+        pyxel.cls(0)
+        bg = GfxImage.from_file("background/sample_opening.png")
+        bg.draw()
+        sprite = Sprite.from_file("sprite/player.png", x=60, y=100, colkey=0)
+        sprite.draw()
+        # フェードアウト用オーバーレイ
+        overlay_img = pyxel.Image(config.SCREEN_WIDTH, config.SCREEN_HEIGHT)
+        overlay_img.rect(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT, 0)
+        overlay = GfxImage(x=0, y=0, img=overlay_img,
+                        u=0, v=0,
+                        w=config.SCREEN_WIDTH, h=config.SCREEN_HEIGHT)
+        overlay.set_fade(0.6)
+        overlay.draw()
+        font = config.FONT
+        pyxel.text(8, 4, "Phase 8: フェードアウト (overlay alpha=0.6)", 10, font)
+
+    def _draw_opening_message(self):
+        """背景+スプライト+メッセージウィンドウの表示。"""
+        pyxel.cls(0)
+        bg = GfxImage.from_file("background/sample_opening.png")
+        bg.draw()
+        sprite = Sprite.from_file("sprite/player.png", x=60, y=100, colkey=0)
+        sprite.draw()
+        mw = self._make_msg([{
+            "text": "ここは……どこだ？\n気がつくと、見知らぬ森の中にいた。",
+            "name": "主人公",
+        }])
+        mw.draw()
+        font = config.FONT
+        pyxel.text(8, 4, "Phase 5: メッセージウィンドウ", 10, font)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,37 @@
 
 ---
 
+## 2026-04-07 - gui_editor 復旧: STEP 7（ドキュメント最終更新）実施
+
+**ブランチ**: `task/asset-loading-support`  
+**担当**: Claude Code  
+**変更ファイル**: `documents/tutorial/007_gui_editor_manual.md`, `documents/prompt/06_resume_prompt.md`, `documents/history/works.md`
+
+### 概要
+
+全 STEP 完了を受けて、GUI エディタ操作説明書を現在の実装状態に合わせて最終更新しました。
+
+### 変更内容
+
+| 項目 | 内容 |
+|------|------|
+| 概要セクション | Map Editor を「実装済み」に更新。未実装注記を削除 |
+| モード切替 | 3モードとも切り替え可能に修正 |
+| 共通ショートカット | Map Editor の保存が動作する旨に修正 |
+| ToolIconBar | Pass (P) ボタンの記載追加。Eraser の説明を「独立トグル」に修正 |
+| キャンバス操作 | ズーム範囲を 1x〜8x に修正。未実装のグリッド/ズームリセット記載を削除 |
+| レイヤー操作 | 「ドラッグ並べ替え」→「↑/↓ ボタン」に修正。ダブルクリック名前編集を明記 |
+| プロパティパネル | Tile Size/Width/Height の説明を実装に合わせて修正 |
+| 既知の注意点 | イベント削除UIが実装済みであることを反映 |
+| 復旧計画進捗 | `06_resume_prompt.md` を全STEP完了に更新 |
+
+### 備考
+
+- **gui_editor.py 復旧作業（STEP 0〜7）が全て完了**
+- 復旧完了チェックリスト（017_gui_editor_recovery_steps.md）の確認は別途実施推奨
+
+---
+
 ## 2026-04-07 - gui_editor 復旧: STEP 4-F（レイヤー機能仕上げ）実施
 
 **ブランチ**: `task/asset-loading-support`  

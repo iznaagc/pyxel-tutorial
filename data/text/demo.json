@@ -47,6 +47,24 @@
         "name": "3行びっしり"
       }
     ],
+    "msg_opening_01": [
+      {
+        "text": "ここは……どこだ？\n気がつくと、見知らぬ森の中にいた。",
+        "name": "主人公"
+      },
+      {
+        "text": "おい、大丈夫か！\nこんなところで倒れていたぞ。",
+        "name": "謎の老人"
+      },
+      {
+        "text": "あ、ありがとうございます。\nここは一体……？",
+        "name": "主人公"
+      },
+      {
+        "text": "ここは忘却の森じゃ。\n早く出ないと危険じゃぞ。",
+        "name": "謎の老人"
+      }
+    ],
     "msg_mixed": [
       {
         "text": "HPが100回復した！\nLv.5にアップ！ATK+3\nスキル「炎の剣」を習得！",
@@ -160,7 +178,119 @@
       "cancel_index": 1
     }
   },
+  "events": {
+    "ev_opening_demo": [
+      {
+        "cmd": "show_picture",
+        "no": 1,
+        "file": "background/sample_opening.png",
+        "opacity": 0
+      },
+      {
+        "cmd": "move_picture",
+        "no": 1,
+        "opacity": 100,
+        "duration": 60
+      },
+      {
+        "cmd": "play_bgm",
+        "file": "RPG1_01.ogg"
+      },
+      {
+        "cmd": "telop",
+        "id": "telop_opening"
+      },
+      {
+        "cmd": "fadeout",
+        "duration": 60
+      },
+      {
+        "cmd": "erase_picture",
+        "no": 1
+      },
+      {
+        "cmd": "show_picture",
+        "no": 1,
+        "file": "background/sample_opening.png",
+        "opacity": 0
+      },
+      {
+        "cmd": "show_picture",
+        "no": 5,
+        "file": "sprite/player.png",
+        "x": 60,
+        "y": 100,
+        "opacity": 0,
+        "colkey": 0
+      },
+      {
+        "cmd": "fadein",
+        "duration": 60
+      },
+      {
+        "cmd": "move_picture",
+        "no": 1,
+        "opacity": 100,
+        "duration": 60
+      },
+      {
+        "cmd": "move_picture",
+        "no": 5,
+        "opacity": 100,
+        "duration": 60
+      },
+      {
+        "cmd": "message",
+        "id": "msg_opening_01"
+      },
+      {
+        "cmd": "move_picture",
+        "no": 5,
+        "x": 200,
+        "y": 80,
+        "duration": 90
+      },
+      {
+        "cmd": "play_se",
+        "sound_no": 31,
+        "ch": 3
+      },
+      {
+        "cmd": "wait",
+        "duration": 60
+      },
+      {
+        "cmd": "fadeout",
+        "duration": 60
+      },
+      {
+        "cmd": "change_scene",
+        "scene": "title"
+      }
+    ]
+  },
   "telops": {
+    "telop_opening": {
+      "lines": [
+        "",
+        "遠い昔、世界がまだ若かった頃……",
+        "",
+        "光と闇が交差する大地に",
+        "ひとつの王国が栄えていた。",
+        "",
+        "しかし、ある日突然",
+        "空から降り注いだ黒い雨が",
+        "すべてを変えてしまった。",
+        "",
+        "王国は滅び、人々は散り散りになり",
+        "希望は失われたかに見えた。",
+        "",
+        "だが、小さな村に暮らす",
+        "一人の若者が立ち上がる――",
+        ""
+      ],
+      "scroll_speed": 1.5
+    },
     "telop_story": {
       "lines": [
         "",

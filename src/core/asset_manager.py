@@ -6,8 +6,8 @@ import config
 
 # アセットディレクトリ
 IMAGES_DIR = os.path.join(config._PROJECT_ROOT, "assets", "images")
-BGM_DIR = os.path.join(config._PROJECT_ROOT, "assets", "bgm")
-SE_DIR = os.path.join(config._PROJECT_ROOT, "assets", "se")
+BGM_DIR = os.path.join(config._PROJECT_ROOT, "assets", "audio", "bgm")
+SE_DIR = os.path.join(config._PROJECT_ROOT, "assets", "audio", "se")
 
 # 外部ファイル用サウンドスロットの開始番号 (0-31は.pyxres用に予約)
 _EXT_SOUND_SLOT_START = 32

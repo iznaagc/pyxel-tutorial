@@ -62,7 +62,7 @@ class Audio:
             ch: 再生チャンネル (デフォルト 0)
         """
         import config
-        slot = config.ASSETS.load_sound(filename, subdir="bgm")
+        slot = config.ASSETS.load_sound(filename, subdir="audio/bgm")
         pyxel.play(ch, slot, loop=True)
 
     @staticmethod
@@ -70,11 +70,11 @@ class Audio:
         """外部音声ファイルをSE（効果音）として再生する。
 
         Args:
-            filename: assets/se/ 内のファイル名 (例: "click.wav")
+            filename: assets/audio/se/ 内のファイル名 (例: "click.wav")
             ch: 再生チャンネル (デフォルト 3)
         """
         import config
-        slot = config.ASSETS.load_sound(filename, subdir="se")
+        slot = config.ASSETS.load_sound(filename, subdir="audio/se")
         pyxel.play(ch, slot)
 
     @staticmethod
@@ -85,9 +85,9 @@ class Audio:
         ME終了後、必要に応じて利用側で再度BGMを再生してください。
 
         Args:
-            filename: assets/bgm/ 内のファイル名
+            filename: assets/audio/bgm/ 内のファイル名
             ch: 再生チャンネル (デフォルト 0)
         """
         import config
-        slot = config.ASSETS.load_sound(filename, subdir="bgm")
+        slot = config.ASSETS.load_sound(filename, subdir="audio/bgm")
         pyxel.play(ch, slot, loop=False)

@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "file_id": "default",
+  "characters": {
+    "char_hero": {
+      "name": "Codex Hero",
+      "initial_job": 0,
+      "graphics": {
+        "face": {
+          "image": "",
+          "selection_id": 0
+        },
+        "walk": {
+          "image": "",
+          "selection_id": 0
+        },
+        "battle": {
+          "image": "",
+          "selection_id": 0
+        }
+      },
+      "personality": 0,
+      "base_stats": {
+        "hp": 100,
+        "mp": 20,
+        "str": 10,
+        "vit": 8,
+        "int": 5,
+        "mnd": 6,
+        "luk": 7
+      },
+      "growth_rates": {
+        "stats": {
+          "hp": 10,
+          "mp": 5,
+          "str": 3,
+          "vit": 2,
+          "int": 1,
+          "mnd": 2,
+          "luk": 2
+        },
+        "physical_skills": {
+          "dagger": 0,
+          "sword": 3,
+          "katana": 0,
+          "axe": 0,
+          "spear": 2,
+          "staff": 0,
+          "claw": 0,
+          "bow": 0
+        },
+        "magic_skills": {
+          "healing": 0,
+          "elemental": 1,
+          "buff": 0,
+          "debuff": 0
+        }
+      }
+    }
+  }
+}

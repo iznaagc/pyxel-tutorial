@@ -18,6 +18,7 @@ class TitleScene(Scene):
             y=120,
             items=[
                 "START",
+                "OPENING DEMO",
                 "OPTION",
                 "QUIT",
             ]
@@ -41,10 +42,12 @@ class TitleScene(Scene):
         selected = self.menu.update()
         if selected == 0: # START
             self.scene_manager.change_scene("game")
-        elif selected == 1: # OPTION
+        elif selected == 1: # OPENING DEMO
+            self.scene_manager.change_scene("opening_demo")
+        elif selected == 2: # OPTION
             self.option_window.open(lines=["~ OPTION MENU ~", "", "No settings yet."])
             self.option_window.activate()
-        elif selected == 2: # QUIT
+        elif selected == 3: # QUIT
             pyxel.quit()
 
 

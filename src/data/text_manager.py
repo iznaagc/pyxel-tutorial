@@ -43,3 +43,11 @@ class TextManager:
             raise KeyError(f"テロップID '{telop_id}' が見つかりません。"
                            f"利用可能: {list(telops.keys())}")
         return telops[telop_id]
+
+    def get_event(self, event_id):
+        """イベントコマンドリストを返す。[{"cmd": "...", ...}, ...]"""
+        events = self._data.get("events", {})
+        if event_id not in events:
+            raise KeyError(f"イベントID '{event_id}' が見つかりません。"
+                           f"利用可能: {list(events.keys())}")
+        return events[event_id]

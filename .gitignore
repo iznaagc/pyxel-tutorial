@@ -10,3 +10,14 @@ assets/fonts/
 *.otf
 *.woff
 *.woff2
+documents/spec
+.vendor/
+.agents/
+.antigravity/
+.claude/
+screenshots/
+assets/
+pr_diff.txt
+temp_comments.json
+tools/gui_editor.py.bak*
+data/compiled/text_all.bin
