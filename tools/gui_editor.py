@@ -2337,7 +2337,11 @@ class CharacterEditor(QScrollArea):
         super().__init__(parent)
         self._data = None
         self._updating = False
-        self._sprite_files = self._list_sprite_files()
+        self._sprite_files_by_type = {
+            "face": self._list_sprite_files("faces"),
+            "walk": self._list_sprite_files("actor"),
+            "battle": self._list_sprite_files("battle_actor"),
+        }
         self._graphic_widgets = {}
         self._base_stat_spins = {}
         self._growth_stat_spins = {}
@@ -2375,7 +2379,7 @@ class CharacterEditor(QScrollArea):
             row_layout.addWidget(QLabel(label + ":"))
             combo = QComboBox()
             combo.addItem("")
-            combo.addItems(self._sprite_files)
+            combo.addItems(self._sprite_files_by_type.get(graphic_type, []))
             combo.currentTextChanged.connect(self._on_changed)
             row_layout.addWidget(combo, 1)
             spin = QSpinBox()
@@ -2437,12 +2441,19 @@ class CharacterEditor(QScrollArea):
         layout.addWidget(magic_group)
         layout.addStretch()
 
-    def _list_sprite_files(self):
-        if not os.path.isdir(SPRITE_DIR):
+    _SPRITE_SUBDIR = {
+        "face": "faces",
+        "walk": "actor",
+        "battle": "battle_actor",
+    }
+
+    def _list_sprite_files(self, subdir):
+        target = os.path.join(SPRITE_DIR, subdir)
+        if not os.path.isdir(target):
             return []
         return sorted(
-            fname for fname in os.listdir(SPRITE_DIR)
-            if os.path.isfile(os.path.join(SPRITE_DIR, fname))
+            fname for fname in os.listdir(target)
+            if os.path.isfile(os.path.join(target, fname))
             and fname.lower().endswith((".png", ".jpg", ".jpeg", ".bmp"))
         )
 
@@ -2493,7 +2504,8 @@ class CharacterEditor(QScrollArea):
             preview.setPixmap(QPixmap())
             return
 
-        image_path = os.path.join(SPRITE_DIR, image_name)
+        subdir = self._SPRITE_SUBDIR.get(graphic_type, "")
+        image_path = os.path.join(SPRITE_DIR, subdir, image_name)
         image = QImage(image_path)
         if image.isNull():
             preview.setText("Load Error")
